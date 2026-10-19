@@ -25,7 +25,7 @@ They also contain `schema_version`, `project_version`, `engine_version`, `run_id
 
 Entity fields follow the supplied requirements. `position_2d` is a JSON two-number array. Nullable IDs/timestamps use JSON null. Dictionaries such as quantities/reserved use resource IDs as keys. Internal indexes and provenance lookup caches are derived and excluded from snapshots.
 
-Initial snapshots contain the validated complete static baseline before RUN_STARTED, event/input sequence zero, tick zero, empty runtime records, and zero reservations. Initialization events describe those baseline entities. The replay loader validates version, identity, topology, authority, quantities, ledger and initial projection consistency. It rejects unsupported schemas and engine builds instead of interpreting them as current data.
+Initial snapshots contain the validated complete static baseline before RUN_STARTED, event/input sequence zero, tick zero, empty runtime records, and zero reservations. Initialization events describe those baseline entities. The replay loader validates version, identity, topology, authority, quantities, ledger and initial projection consistency. It rejects unsupported schemas and differing reported engine version strings instead of interpreting them as current data. `engine_version` stores `Engine.get_version_info().string`; executable provenance is recorded separately in the handoff.
 
 Reservation states: `ACTIVE`, `FULFILLED`, `CONSUMED`, `RELEASED`, `INVALIDATED`. FULFILLED is specific to shipment dispatch. Shipment and message states follow the requirements. `QUEUED` is reserved in the message schema; a successful send directly creates IN_TRANSIT, and 2A adds no queue policy.
 

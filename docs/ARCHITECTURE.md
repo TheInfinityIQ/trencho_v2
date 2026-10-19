@@ -26,7 +26,7 @@ Indexes are updated per affected entity: source edges, stockpiles by owner/locat
 * Directed route costs are integer-microsecond sums. Equal-cost routes compare edge-ID sequences lexicographically, with the shorter prefix first. Cycles are settled once; routes do not repeat a node.
 * Definition IDs cannot contain `:`. Runtime IDs use typed namespaces derived from the next event sequence, independent of names, array indexes, node paths and memory addresses.
 * The coordinator owns a seeded RNG and records its state as a decimal string, avoiding JSON integer precision loss. No stochastic choice is implemented or made. A future random operation must introduce a logged event that changes recorded RNG state.
-* Replay requires the recorded project/schema and exact engine build. It compares semantic normalized values, ignoring dictionary order, integral number representation and diagnostic run ID. It preserves all list/event order and all other content.
+* Replay requires the recorded project/schema and the same reported engine version string. The observed executable's build hash is recorded in the handoff; the package loader does not verify executable file hashes. It compares semantic normalized values, ignoring dictionary order, integral number representation and diagnostic run ID. It preserves all list/event order and all other content.
 
 ## Resource lifecycle
 
