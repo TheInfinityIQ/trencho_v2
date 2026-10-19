@@ -16,6 +16,7 @@ const Fronts = preload("res://kernel/front_service.gd")
 const Journal = preload("res://kernel/decision_journal.gd")
 const Router = preload("res://kernel/router.gd")
 const Resolution = preload("res://kernel/resource_resolution_service.gd")
+const Arbitration = preload("res://kernel/superior_arbitration_service.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -99,6 +100,15 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 	var correlation: Variant = operation_correlation if operation_correlation != null else context.get("input_id", world.correlation(subject) if subject is String else null)
 	if body.get("need_id") is String and not body.need_id.is_empty():
 		correlation = body.need_id
+	# Superior transfers retain their arbitration chain even alongside a need ID.
+	if context.get("arbitration_id") != null and type not in ["MESSAGE_DELIVERED", "MESSAGE_FAILED"]:
+		correlation = context.arbitration_id
+		body.arbitration_id = context.arbitration_id
+		body.decision_id = context.get("decision_id")
+	elif operation_correlation is String and operation_correlation.begins_with("arbitration:"):
+		correlation = operation_correlation
+	elif subject is String and world.get_shipment(subject).has("arbitration_id"):
+		correlation = world.get_shipment(subject).arbitration_id
 	var causation: Variant = cause if cause != null else context.get("causation_event_id", world.last_event(subject) if subject is String else null)
 	var event := {"event_id": id, "event_type": type, "schema_version": Definition.SCHEMA_VERSION, "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
 	world.apply_event(event)
@@ -232,7 +242,24 @@ func advance(ticks: int = 1) -> Dictionary:
 		Communication.new(self).step()
 		Fronts.new(self).resolve_tick(prepared.demands, tick_event)
 		Resolution.new(self).step(tick_event)
+		var superior_enabled := false
+		for command_id in world.ids("commands"):
+			var command: Dictionary = world.get_command(command_id)
+			if command.enabled and command.get("ammunition_arbitration_enabled", false): superior_enabled = true
+		if superior_enabled:
+			# Drain newly sent zero-latency material updates before this boundary's AI.
+			Resolution.new(self).step(tick_event)
+			Arbitration.new(self).step(tick_event)
+			# Zero-latency orders are received after arbitration, before the next tick.
+			Resolution.new(self).step(tick_event)
 	return R.ok()
+
+func receive_superior_message(message: Dictionary) -> void:
+	if message.message_type == "ORDER": Arbitration.new(self).receive_notification(message)
+	else: Arbitration.new(self).receive_report(message)
+
+func update_superior_reports() -> void:
+	Arbitration.new(self).update_reports()
 
 func command_view(id: String) -> RefCounted:
 	var command: Dictionary = world.get_command(id)
@@ -257,6 +284,10 @@ func command_view(id: String) -> RefCounted:
 	data.direct_superior = {}
 	data.communication_routes = {}
 	data.known_incoming = []
+	data.superior_need_reports = []
+	for report_id in world.ids("superior_need_reports"):
+		var report: Dictionary = world.get_entity("superior_need_reports", report_id)
+		if report.superior_command_id == id: data.superior_need_reports.append(report)
 	var assigned: Dictionary = world.get_front(command.get("local_decision_front_id") if command.get("local_decision_front_id") is String else "")
 	if not assigned.is_empty():
 		data.front_assignment = {"front_id": assigned.id, "supply_stockpile_id": assigned.supply_stockpile_id}

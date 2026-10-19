@@ -235,6 +235,7 @@ func escalate(need: Dictionary, view: RefCounted) -> void:
 	var result := send(need.command_id, parent.id, "ESCALATION", payload)
 	need.escalation_status = "SENT" if result.success else result.error_code
 	need.escalation_message_id = result.entity_id
+	need.last_superior_report_revision = need.revision
 	need.current_resolution_phase = "ESCALATED"
 	sim.commit("RESOURCE_NEED_ESCALATED" if result.success else "RESOURCE_NEED_ESCALATION_FAILED", [], {"need_id": need.id, "message_id": result.entity_id, "reason_code": result.error_code}, need.id)
 	save_need(need)
@@ -390,6 +391,7 @@ func receive_accept(c: Dictionary, message: Dictionary) -> void:
 func process_message(message: Dictionary) -> void:
 	var payload: Dictionary = message.payload
 	var subtype: String = payload.get("subtype", "")
+	sim.receive_superior_message(message)
 	var need_id: Variant = payload.get("need_id")
 	if not need_id is String or not canonical_quantity(payload.get("need_revision"), 9007199254740991) or payload.need_revision < 1: return
 	scope(message.recipient_command_id, need_id, world.last_event(message.id), payload.get("coordination_id"))
@@ -480,7 +482,7 @@ func step(tick_event: Variant = null) -> void:
 			var view: RefCounted = sim.command_view(command_id)
 			for message in view.inbox():
 				var subtype: Variant = message.payload.get("subtype")
-				if not subtype is String or not (subtype.begins_with("AMMO_TRANSFER_") or subtype == "AMMO_NEED_ESCALATION"): continue
+				if not subtype is String or not (subtype.begins_with("AMMO_TRANSFER_") or subtype.begins_with("AMMO_NEED_") or subtype == "AMMO_ALLOCATION_DISPATCHED"): continue
 				var rid: String = "receipt:" + message.id
 				if not world.get_entity("resolution_receipts", rid).is_empty(): continue
 				scope(command_id, str(message.payload.get("need_id", "")), world.last_event(message.id), message.payload.get("coordination_id"))
@@ -507,6 +509,7 @@ func step(tick_event: Variant = null) -> void:
 					sim.commit("RESOURCE_NEED_ESCALATION_FAILED", [], {"reason_code": "MESSAGE_FAILED", "message_id": message.id}, need.id)
 					save_need(need)
 			progress(id)
+	sim.update_superior_reports()
 	sim.context = previous_context
 
 

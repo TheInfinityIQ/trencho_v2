@@ -28,7 +28,7 @@ func send(sender: String, recipient: String, type: String, payload: Dictionary) 
 		return route
 	var id: String = sim.entity_id("message")
 	var resource_message := is_resource_resolution_message(type, payload)
-	var correlation: Variant = payload.get("need_id") if resource_message else sim.context.get("input_id")
+	var correlation: Variant = payload.get("arbitration_id", payload.get("need_id")) if resource_message else sim.context.get("input_id")
 	var duration_us: int = Clock.units(world.clock().tick_duration)
 	var latency_us: int = Clock.units(route.details.total_travel_time)
 	var due_tick: int = world.clock().tick_index + ceili(float(latency_us) / duration_us)
@@ -65,4 +65,4 @@ func step() -> void:
 
 static func is_resource_resolution_message(type: String, payload: Dictionary) -> bool:
 	var subtype: Variant = payload.get("subtype")
-	return type in ["COORDINATION", "ESCALATION"] and subtype is String and (subtype.begins_with("AMMO_TRANSFER_") or subtype == "AMMO_NEED_ESCALATION")
+	return type in ["COORDINATION", "ESCALATION", "ORDER"] and subtype is String and (subtype.begins_with("AMMO_TRANSFER_") or subtype.begins_with("AMMO_NEED_") or subtype == "AMMO_ALLOCATION_DISPATCHED")

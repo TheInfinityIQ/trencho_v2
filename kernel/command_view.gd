@@ -62,3 +62,6 @@ func communication_route(command_id: String) -> Dictionary:
 
 func known_incoming() -> Array:
 	return _data.get("known_incoming", []).duplicate(true)
+
+func superior_need_reports() -> Array:
+	return _data.get("superior_need_reports", []).duplicate(true)

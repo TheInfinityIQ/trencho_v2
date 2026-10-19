@@ -12,6 +12,7 @@ const Definition = preload("res://kernel/world_definition.gd")
 const FrontCases = preload("res://tests/front_cases.gd")
 const DecisionCases = preload("res://tests/decision_cases.gd")
 const NeedCases = preload("res://tests/resource_resolution_cases.gd")
+const ArbitrationCases = preload("res://tests/arbitration_cases.gd")
 var checks: Array = []
 var failures: Array = []
 
@@ -89,6 +90,9 @@ func _initialize() -> void:
 		check(item.passed, item.name)
 	var needs: Dictionary = NeedCases.run()
 	for item in needs.checks:
+		check(item.passed, item.name)
+	var arbitration: Dictionary = ArbitrationCases.run()
+	for item in arbitration.checks:
 		check(item.passed, item.name)
 	var report := {"schema_version": Definition.SCHEMA_VERSION, "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
 	Exporter.write_json("res://artifacts/acceptance_results.json", report)

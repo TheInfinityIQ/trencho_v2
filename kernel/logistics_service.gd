@@ -32,6 +32,11 @@ func create_shipment(origin_id: String, destination_id: String, resource: String
 	if sim.context.get("source_system") == "RESOURCE_RESOLUTION":
 		shipment.need_id = sim.context.input_id
 		shipment.coordination_id = sim.context.get("coordination_id")
+	if sim.context.get("source_system") == "RESOURCE_ARBITRATION":
+		shipment.arbitration_id = sim.context.arbitration_id
+		shipment.decision_id = sim.context.decision_id
+		shipment.need_id = sim.context.allocation_need_id
+		shipment.need_revision = sim.context.need_revision
 	var cause: String = sim.commit("RESERVATION_CREATED", [change("stockpiles", origin), change("resource_reservations", reservation), change("shipments", shipment)], {"shipment_id": id}, rid)
 	sim.commit("SHIPMENT_CREATED", [], {"reservation_id": rid, "route": route.details}, id, cause)
 	return R.ok(id)

@@ -80,3 +80,7 @@ Project0.2.1/schema2B.2 adds an opt-in LOCAL commander loop: complete local obse
 ## Step105: dynamic ammunition resolution
 
 Project0.2.2/schema2B.3 adds optional resource_resolution_enabled on a configured LOCAL commander: belief-based dynamic need, own reserves first, reserved peer offers/physical transfers, then a delivered direct-superior escalation snapshot. Superior allocation remains outside this step. Run -Mode needs for105 checks/A-E packages, or -Mode need-demo then -Mode replay -Package res://artifacts/run_step105. See [resource resolution contract](docs/RESOURCE_RESOLUTION_105.md). All prior demonstrations remain available with this feature off.
+
+## Step106: superior scarce ammunition allocation
+
+Project0.2.3/schema2B.4 adds opt-in ammunition_arbitration_enabled on OPERATIONAL commands: delivered private need reports/updates, exact5/15/20-second triage, per-revision funding caps, authority-bound physical dispatch and delayed allocation notices. Run -Mode arbitration for A–H and targeted checks, -Mode test for all regressions, and -Mode replay -Package res://artifacts/run_step106_A for fresh-process verification. See [arbitration contract, activation and evidence](docs/ARBITRATION_106.md). The inspector starts idle as before.
