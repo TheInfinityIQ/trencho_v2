@@ -51,12 +51,14 @@ func initialize_snapshot(snapshot: Dictionary) -> Dictionary:
 	start_time_utc = Time.get_datetime_string_from_system(true) + "Z"
 	_rng.seed = int(snapshot.simulation_seed)
 	_rng.state = int(snapshot.rng_state)
-	commit("RUN_STARTED", [], {"simulation_seed": snapshot.simulation_seed}, null)
+	var started: String = commit("RUN_STARTED", [], {"simulation_seed": snapshot.simulation_seed}, null)
 	for pair in [["locations", "LOCATION_CREATED"], ["commands", "COMMAND_CREATED"], ["resource_types", "RESOURCE_TYPE_DEFINED"], ["stockpiles", "STOCKPILE_CREATED"], ["logistics_edges", "LOGISTICS_EDGE_CREATED"], ["communication_edges", "COMMUNICATION_EDGE_CREATED"]]:
 		for id in world.ids(pair[0]):
 			commit(pair[1], [{"table": pair[0], "id": id, "value": world.get_entity(pair[0], id)}], {"initial_definition": true}, id)
 	for id in world.ids("fronts"):
 		commit("FRONT_CREATED", [{"table": "fronts", "id": id, "value": world.get_front(id)}], {"initial_definition": true}, id)
+	for id in world.ids("shipments"):
+		commit("INITIAL_CARGO_RECORDED", [{"table": "shipments", "id": id, "value": world.get_shipment(id)}], {"initial_definition": true}, id, started, id)
 	return R.ok()
 
 func actor() -> Variant:

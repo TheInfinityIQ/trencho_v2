@@ -84,3 +84,7 @@ Project0.2.2/schema2B.3 adds optional resource_resolution_enabled on a configure
 ## Step106: superior scarce ammunition allocation
 
 Project0.2.3/schema2B.4 adds opt-in ammunition_arbitration_enabled on OPERATIONAL commands: delivered private need reports/updates, exact5/15/20-second triage, per-revision funding caps, authority-bound physical dispatch and delayed allocation notices. Run -Mode arbitration for A–H and targeted checks, -Mode test for all regressions, and -Mode replay -Package res://artifacts/run_step106_A for fresh-process verification. See [arbitration contract, activation and evidence](docs/ARBITRATION_106.md). The inspector starts idle as before.
+
+## Step107: integrated unattended hierarchy
+
+Project0.2.4/schema2B.5 integrates the accepted command/logistics systems for25seconds with zero runtime inputs and the specified initial strategic cargo. Run -Mode integrated -TimeoutSeconds90, then -Mode replay -Package res://artifacts/run_step107. See [fixed fixture and causal audits](docs/INTEGRATED_107.md) and the explicit [acceptance amendment](docs/AMENDMENT_107.md). Policies and startup safeguards remain unchanged; no2C is implemented.

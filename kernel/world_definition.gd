@@ -3,8 +3,9 @@ extends RefCounted
 const R = preload("res://kernel/result.gd")
 const Clock = preload("res://kernel/clock.gd")
 const Front = preload("res://kernel/front_definition.gd")
-const PROJECT_VERSION = "0.2.3"
-const SCHEMA_VERSION = "2B.4"
+const InitialCargo = preload("res://kernel/initial_cargo.gd")
+const PROJECT_VERSION = "0.2.4"
+const SCHEMA_VERSION = "2B.5"
 
 static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dictionary:
 	if not R.json_compatible(data) or not R.json_compatible(seed):
@@ -127,6 +128,8 @@ static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dict
 			return R.fail("INVALID_WORLD_DEFINITION", {"reason": "OWNER_AUTHORITY_MISMATCH", "stockpile_id": id})
 	for id in state.commands:
 		state.commands[id].subordinate_command_ids.sort()
+	if not InitialCargo.load_into(state, data.get("initial_in_transit_shipments", []), used):
+		return R.fail("INVALID_INITIAL_CARGO")
 	state.fronts = {}
 	if not data.get("fronts", []) is Array:
 		return R.fail("INVALID_WORLD_DEFINITION")
@@ -183,6 +186,8 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 	if not snapshot.rng_state is String or not snapshot.rng_state.is_valid_int() or not snapshot.run_id is String or not (snapshot.simulation_seed is int or snapshot.simulation_seed is float):
 		return R.fail("INVALID_SNAPSHOT", {"reason": "INVALID_RUN_IDENTITY", "rng_state": snapshot.rng_state})
 	var definition := {"id": snapshot.initial_world_definition_id, "tick_duration": snapshot.clock.get("tick_duration", 0), "public_facts": snapshot.public_facts}
+	if not snapshot.shipments is Dictionary: return R.fail("INVALID_SNAPSHOT")
+	definition.initial_in_transit_shipments = snapshot.shipments.values()
 	for table in ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "fronts"]:
 		if not snapshot[table] is Dictionary:
 			return R.fail("INVALID_SNAPSHOT")
@@ -190,7 +195,7 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 		for id in snapshot[table]:
 			if not snapshot[table][id] is Dictionary or snapshot[table][id].get("id") != id:
 				return R.fail("INVALID_SNAPSHOT")
-	for table in ["shipments", "messages", "resource_reservations", "information_records", "observation_batches", "decisions", "decision_candidates", "resource_needs", "peer_coordinations", "known_transfers", "resolution_receipts", "superior_need_reports", "superior_revision_funding", "resource_arbitrations"]:
+	for table in ["messages", "resource_reservations", "information_records", "observation_batches", "decisions", "decision_candidates", "resource_needs", "peer_coordinations", "known_transfers", "resolution_receipts", "superior_need_reports", "superior_revision_funding", "resource_arbitrations"]:
 		if not snapshot[table] is Dictionary or not snapshot[table].is_empty():
 			return R.fail("UNSUPPORTED_SNAPSHOT")
 	var result := load_definition(definition, int(snapshot.simulation_seed), snapshot.run_id)

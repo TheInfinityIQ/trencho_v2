@@ -1,6 +1,6 @@
 param(
     [string]$GodotPath = $env:GODOT_BIN,
-    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo','needs','need-demo','arbitration')][string]$Mode = 'test',
+    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo','needs','need-demo','arbitration','integrated')][string]$Mode = 'test',
     [string]$Package = 'res://artifacts/run_demo',
     [int]$TimeoutSeconds = 60
 )
@@ -36,6 +36,7 @@ switch ($Mode) {
     'smoke' { $engineArguments += @('--quit-after','3') }
     'test' { $engineArguments += @('--script','res://tests/acceptance.gd') }
     'closeout' { $engineArguments += @('--script','res://tests/closeout_regression.gd') }
+    'integrated' { $engineArguments += @('--script','res://tests/integrated_regression.gd') }
     'arbitration' { $engineArguments += @('--script','res://tests/arbitration_regression.gd') }
     'needs' { $engineArguments += @('--script','res://tests/resource_resolution_regression.gd') }
     'decisions' { $engineArguments += @('--script','res://tests/decision_regression.gd') }
