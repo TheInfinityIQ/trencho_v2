@@ -1,6 +1,6 @@
 extends RefCounted
 
-const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger", "fronts", "observation_batches", "decisions", "decision_candidates"]
+const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger", "fronts", "observation_batches", "decisions", "decision_candidates", "resource_needs", "peer_coordinations", "known_transfers", "resolution_receipts"]
 var _state: Dictionary = {}
 var _outgoing: Dictionary = {}
 var _stock_location: Dictionary = {}

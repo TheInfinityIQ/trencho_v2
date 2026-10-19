@@ -29,6 +29,9 @@ func create_shipment(origin_id: String, destination_id: String, resource: String
 	var reservation: Dictionary = Resources.new(sim).reservation(rid, origin_id, resource, quantity, actor, "SHIPMENT")
 	origin.reserved[resource] = origin.reserved.get(resource, 0) + quantity
 	var shipment := {"id": id, "resource_type_id": resource, "quantity": quantity, "origin_stockpile_id": origin_id, "destination_stockpile_id": destination_id, "requested_by_command_id": actor, "reservation_id": rid, "route_edge_ids": route.details.edge_ids, "current_route_index": 0, "current_location_id": origin.location_id, "edge_progress_seconds": 0.0, "state": "PLANNED", "created_at": sim.time(), "departed_at": null, "arrived_at": null, "blocked_reason": null}
+	if sim.context.get("source_system") == "RESOURCE_RESOLUTION":
+		shipment.need_id = sim.context.input_id
+		shipment.coordination_id = sim.context.get("coordination_id")
 	var cause: String = sim.commit("RESERVATION_CREATED", [change("stockpiles", origin), change("resource_reservations", reservation), change("shipments", shipment)], {"shipment_id": id}, rid)
 	sim.commit("SHIPMENT_CREATED", [], {"reservation_id": rid, "route": route.details}, id, cause)
 	return R.ok(id)
@@ -161,3 +164,34 @@ func step() -> void:
 			s.state = "ARRIVED"
 			s.arrived_at = sim.time()
 			sim.commit("SHIPMENT_ARRIVED", [change("stockpiles", destination), change("shipments", s)], {"quantity": s.quantity}, id)
+# 105: bind a live offer claim to cargo without releasing/re-reserving it.
+# The existing dispatch path retains sole physical mutation ownership.
+func dispatch_reserved(reservation_id: String, destination_id: String, actor: String) -> Dictionary:
+	var r: Dictionary = world.get_entity("resource_reservations", reservation_id)
+	if r.is_empty() or r.state != "ACTIVE" or r.purpose_code != "PEER_AMMO_TRANSFER_OFFER" or r.claimant_command_id != actor or world.shipment_for_reservation(reservation_id) != null:
+		return R.fail("RESERVATION_MISMATCH")
+	var coordination: Dictionary = world.get_entity("peer_coordinations", r.get("coordination_id", ""))
+	if coordination.is_empty() or r.id not in coordination.reservation_ids or coordination.peer_command_id != actor or coordination.destination_stockpile_id != destination_id or r.resource_type_id != "AMMUNITION":
+		return R.fail("RESERVATION_MISMATCH")
+	if sim.context.get("source_system") != "RESOURCE_RESOLUTION":
+		return R.fail("UNAUTHORIZED")
+	if coordination.donor_status != "RESERVED" or not coordination.get("acceptance_message_id") is String or Clock.units(sim.time()) >= coordination.offer_expiry_micro:
+		return R.fail("INVALID_STATE")
+	var accepted: Dictionary = world.get_entity("messages", coordination.acceptance_message_id)
+	if accepted.get("state") != "DELIVERED" or accepted.sender_command_id != coordination.requester_command_id or accepted.recipient_command_id != actor or accepted.payload.get("subtype") != "AMMO_TRANSFER_ACCEPT" or accepted.payload.get("coordination_id") != coordination.id or accepted.payload.get("quantity") != coordination.offered_quantity:
+		return R.fail("INVALID_STATE")
+	if not sim.authorized(actor, r.stockpile_id):
+		return R.fail("UNAUTHORIZED")
+	var origin := enabled_stockpile(r.stockpile_id)
+	var destination := enabled_stockpile(destination_id)
+	if origin.is_empty() or destination.is_empty() or origin.id == destination.id:
+		return R.fail("INVALID_ENTITY")
+	var route := Router.find(world, origin.location_id, destination.location_id)
+	if not route.success: return route
+	var id: String = sim.entity_id("shipment")
+	var shipment := {"id": id, "resource_type_id": r.resource_type_id, "quantity": r.quantity, "origin_stockpile_id": origin.id, "destination_stockpile_id": destination.id, "requested_by_command_id": actor, "reservation_id": r.id, "route_edge_ids": route.details.edge_ids, "current_route_index": 0, "current_location_id": origin.location_id, "edge_progress_seconds": 0.0, "state": "PLANNED", "created_at": sim.time(), "departed_at": null, "arrived_at": null, "blocked_reason": null}
+	shipment.need_id = sim.context.get("input_id")
+	shipment.coordination_id = sim.context.get("coordination_id")
+	var cause: String = sim.commit("SHIPMENT_CREATED", [change("shipments", shipment)], {"reservation_id": r.id, "existing_offer_reservation": true, "route": route.details}, id)
+	sim.context.causation_event_id = cause
+	return dispatch(id)

@@ -36,3 +36,29 @@ func current_belief(subject: String, key: String, at_time: float) -> Dictionary:
 			return a.received_at > b.received_at
 		return a.id < b.id)
 	return {} if records.is_empty() else records[0].duplicate(true)
+
+# Explicit own-authority/known-network surfaces, not foreign inventories/front truth.
+func controlled_stockpiles() -> Array:
+	var ids: Array = _data.stockpiles.keys()
+	ids.sort()
+	var result: Array = []
+	for id in ids: result.append(_data.stockpiles[id].duplicate(true))
+	return result
+
+func front_assignment() -> Dictionary:
+	return _data.get("front_assignment", {}).duplicate(true)
+
+func protected_front_stockpile_ids() -> Array:
+	return _data.get("protected_front_stockpile_ids", []).duplicate()
+
+func peers() -> Array:
+	return _data.get("peers", []).duplicate(true)
+
+func direct_superior() -> Dictionary:
+	return _data.get("direct_superior", {}).duplicate(true)
+
+func communication_route(command_id: String) -> Dictionary:
+	return _data.get("communication_routes", {}).get(command_id, {}).duplicate(true)
+
+func known_incoming() -> Array:
+	return _data.get("known_incoming", []).duplicate(true)

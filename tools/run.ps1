@@ -1,6 +1,6 @@
 param(
     [string]$GodotPath = $env:GODOT_BIN,
-    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo')][string]$Mode = 'test',
+    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo','needs','need-demo')][string]$Mode = 'test',
     [string]$Package = 'res://artifacts/run_demo',
     [int]$TimeoutSeconds = 60
 )
@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if ($Mode -eq 'front-demo' -and -not $PSBoundParameters.ContainsKey('Package')) { $Package = 'res://artifacts/run_step103' }
 if ($Mode -eq 'decision-demo' -and -not $PSBoundParameters.ContainsKey('Package')) { $Package = 'res://artifacts/run_step104' }
+if ($Mode -eq 'need-demo' -and -not $PSBoundParameters.ContainsKey('Package')) { $Package = 'res://artifacts/run_step105' }
 if (-not $GodotPath) {
     $localEngine = Join-Path (Split-Path (Split-Path $projectRoot -Parent) -Parent) '.tools/godot-4.7.2/godot.exe'
     if (Test-Path -LiteralPath $localEngine) { $GodotPath = $localEngine }
@@ -35,11 +36,13 @@ switch ($Mode) {
     'smoke' { $engineArguments += @('--quit-after','3') }
     'test' { $engineArguments += @('--script','res://tests/acceptance.gd') }
     'closeout' { $engineArguments += @('--script','res://tests/closeout_regression.gd') }
+    'needs' { $engineArguments += @('--script','res://tests/resource_resolution_regression.gd') }
     'decisions' { $engineArguments += @('--script','res://tests/decision_regression.gd') }
     'fronts' { $engineArguments += @('--script','res://tests/front_regression.gd') }
     'inspector-headless' { $engineArguments += @('--script','res://tests/inspector_headless.gd') }
     'visual' { $engineArguments += @('--script','res://tests/inspector_smoke.gd') }
     'demo' { $engineArguments += @('--script','res://tools/cli.gd','--','demo',$Package) }
+    'need-demo' { $engineArguments += @('--script','res://tools/cli.gd','--','need-demo',$Package) }
     'decision-demo' { $engineArguments += @('--script','res://tools/cli.gd','--','decision-demo',$Package) }
     'front-demo' { $engineArguments += @('--script','res://tools/cli.gd','--','front-demo',$Package) }
     'replay' { $engineArguments += @('--script','res://tools/cli.gd','--','replay',$Package) }

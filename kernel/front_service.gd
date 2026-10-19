@@ -6,6 +6,7 @@ const Resources = preload("res://kernel/resource_service.gd")
 const Information = preload("res://kernel/information_service.gd")
 const Authority = preload("res://kernel/authority_service.gd")
 const Journal = preload("res://kernel/decision_journal.gd")
+const Resolution = preload("res://kernel/resource_resolution_service.gd")
 
 func create(data: Dictionary) -> Dictionary:
 	if not sim.privileged():
@@ -137,6 +138,7 @@ func _observe(front: Dictionary) -> void:
 		var batch := {"id": "observation:" + cause, "command_id": front.responsible_command_id, "front_id": front.id, "record_ids": records, "observed_at_micro": Clock.units(sim.time()), "complete": records.size() == 11, "expected_fact_keys": facts.keys()}
 		var completed: String = sim.commit("FRONT_OBSERVATION_COMPLETE", [change("observation_batches", batch)], {"observation_batch_id": batch.id}, batch.id, cause)
 		Journal.new(sim).on_complete(batch, completed)
+		Resolution.new(sim).on_complete(batch)
 
 func metrics(id: String) -> Dictionary:
 	var front: Dictionary = world.get_front(id)

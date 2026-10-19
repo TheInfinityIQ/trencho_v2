@@ -1,4 +1,4 @@
-# Diagnostic schemas — 2B.2 / project 0.2.1
+# Diagnostic schemas — 2B.3 / project 0.2.2
 
 Step 103 adds the fronts registry with canonical integer fixed-point fields and private front observations; see FRONTS_103.md for field and belief units. Current replay requires schema2B.1/project0.2.0. The following closeout notes describe the preserved 2A baseline.
 
@@ -132,3 +132,7 @@ Snapshots add fronts, including integer centi-strength/pressure, milli-ammo base
 ## 2B.2 decision additions
 
 Commands gain nullable local_decision_front_id. New authoritative registries: observation_batches, decisions, decision_candidates. Autonomous observation batches have11 records and explicit completion; ordinary103 fronts retain9. Decision/candidate/outcome fields, canonical units, correlation/causation and privileged diagnostic input are specified in DECISIONS_104.md. Current replay requires project0.2.1/schema2B.2; accepted earlier packages use their preserved source revisions. Exact integer import and strict comparison remain unchanged.
+
+## 2B.3 resource-resolution additions
+
+Commands gain resource_resolution_enabled (bool,false by default), requiring a configured LOCAL front. New registries:resource_needs, peer_coordinations, known_transfers, resolution_receipts. Need lifecycle separates sourcing coverage from observed physical closure; all new quantities/rates/times are canonical integers. Offer claims/cargo retain need/coordination identity, and known incoming is scoped to the receiving command. COORDINATION/ESCALATION protocol payloads and four reported superior fact keys are documented in RESOURCE_RESOLUTION_105.md. Replay requires0.2.2/2B.3; accepted prior packages retain their original source revisions. Exact JSON import and strict comparison remain unchanged.

@@ -77,3 +77,7 @@ FrontDefinition and FrontService implement abstract front state, deterministic f
 ## Step 104 local decision boundary
 
 LocalCommandPlanner consumes only a detached CommandView and complete observation envelope. DecisionPolicy104 isolates integer prototype scores/eligibility/ties. DecisionJournal coordinates event projections and asks FrontService/AuthorityService to validate the chosen posture change. It attaches descriptive observed outcomes before the next decision. Optional command configuration activates only the responsible LOCAL/front pair. See DECISIONS_104.md.
+
+## Step105 resolution boundary
+
+ResourceNeedPolicy reads complete CommandView beliefs and own authority-scoped resources. ResourceResolutionService coordinates durable needs, one peer conversation at a time and scoped incoming knowledge. Resource/Logistics services retain physical ownership; the narrow existing-offer-claim dispatch path avoids re-reservation. Known arrival/failure notification runs after logistics and before front observation; protocol inbox processing runs after all front samples, preventing a half-ingested donor batch. Superior learns reported snapshots only after delivered escalation and has no allocation policy. See RESOURCE_RESOLUTION_105.md.

@@ -14,6 +14,8 @@ const Information = preload("res://kernel/information_service.gd")
 const View = preload("res://kernel/command_view.gd")
 const Fronts = preload("res://kernel/front_service.gd")
 const Journal = preload("res://kernel/decision_journal.gd")
+const Router = preload("res://kernel/router.gd")
+const Resolution = preload("res://kernel/resource_resolution_service.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -75,11 +77,17 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 	var body: Dictionary = payload.duplicate(true)
 	body.changes = changes.duplicate(true)
 	body.privileged = privileged()
+	if context.get("source_system") == "RESOURCE_RESOLUTION":
+		body.need_id = context.get("input_id")
+		if context.get("coordination_id") != null: body.coordination_id = context.coordination_id
 	var subject_location: Variant = null
 	if subject is String:
 		var location: Dictionary = world.get_location(subject)
 		var stock: Dictionary = world.get_stockpile(subject)
 		var shipment: Dictionary = world.get_shipment(subject)
+		if shipment.has("need_id"):
+			body.need_id = shipment.need_id
+			if shipment.get("coordination_id") != null: body.coordination_id = shipment.coordination_id
 		if not location.is_empty():
 			subject_location = subject
 		elif not stock.is_empty():
@@ -89,6 +97,8 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 	var id := "event:%010d" % (world.sequence() + 1)
 	var event_clock: Dictionary = changes[0].value if type == "TICK_ADVANCED" else world.clock()
 	var correlation: Variant = operation_correlation if operation_correlation != null else context.get("input_id", world.correlation(subject) if subject is String else null)
+	if body.get("need_id") is String and not body.need_id.is_empty():
+		correlation = body.need_id
 	var causation: Variant = cause if cause != null else context.get("causation_event_id", world.last_event(subject) if subject is String else null)
 	var event := {"event_id": id, "event_type": type, "schema_version": Definition.SCHEMA_VERSION, "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
 	world.apply_event(event)
@@ -119,7 +129,7 @@ func _validate_input(input: Dictionary) -> Dictionary:
 		"CreateResource": ["stockpile_id", "resource_type_id", "quantity"], "ConsumeResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"], "DestroyResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"],
 		"ReserveResource": ["stockpile_id", "resource_type_id", "quantity"], "ReleaseReservation": ["reservation_id"], "ConsumeReservation": ["reservation_id"], "InvalidateReservation": ["reservation_id"],
 		"CreateShipment": ["origin_stockpile_id", "destination_stockpile_id", "resource_type_id", "quantity"], "DispatchShipment": ["shipment_id"], "CancelShipment": ["shipment_id"], "RerouteShipment": ["shipment_id", "destination_stockpile_id"], "DestroyShipment": ["shipment_id", "reason_code"],
-		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "CreateFront": ["front"], "SetFrontEnemyPressure": ["front_id", "value"], "SetFrontFriendlyStrength": ["front_id", "value"], "SetFrontPosture": ["front_id", "value"], "SetFrontEnabled": ["front_id", "value"], "EvaluateLocalDecision": ["command_id", "front_id", "record_ids", "complete", "observed_at_micro"], "EndRun": []}
+		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "CreateFront": ["front"], "SetFrontEnemyPressure": ["front_id", "value"], "SetFrontFriendlyStrength": ["front_id", "value"], "SetFrontPosture": ["front_id", "value"], "SetFrontEnabled": ["front_id", "value"], "EvaluateResourceNeed": ["observation_batch_id"], "EvaluateLocalDecision": ["command_id", "front_id", "record_ids", "complete", "observed_at_micro"], "EndRun": []}
 	if not input.get("type") is String or not required.has(input.type):
 		return R.fail("INVALID_INPUT")
 	for key in required[input.type]:
@@ -144,6 +154,9 @@ func _validate_input(input: Dictionary) -> Dictionary:
 
 func _execute(i: Dictionary) -> Dictionary:
 	match i.type:
+		"EvaluateResourceNeed":
+			if not privileged(): return R.fail("UNAUTHORIZED")
+			return Resolution.new(self).evaluate_batch(world.get_entity("observation_batches", i.observation_batch_id))
 		"EvaluateLocalDecision":
 			return Journal.new(self).debug_evaluate(i)
 		"CreateFront":
@@ -215,8 +228,10 @@ func advance(ticks: int = 1) -> Dictionary:
 		tick_changes.append_array(prepared.changes)
 		var tick_event := commit("TICK_ADVANCED", tick_changes, {"front_integer_demands": prepared.demands} if not prepared.demands.is_empty() else {})
 		Logistics.new(self).step()
+		Resolution.new(self).sync_known_transfers()
 		Communication.new(self).step()
 		Fronts.new(self).resolve_tick(prepared.demands, tick_event)
+		Resolution.new(self).step(tick_event)
 	return R.ok()
 
 func command_view(id: String) -> RefCounted:
@@ -236,6 +251,35 @@ func command_view(id: String) -> RefCounted:
 		var record: Dictionary = world.get_entity("information_records", record_id)
 		if record.owner_command_id == id:
 			data.information_records.append(record)
+	data.front_assignment = {}
+	data.protected_front_stockpile_ids = []
+	data.peers = []
+	data.direct_superior = {}
+	data.communication_routes = {}
+	data.known_incoming = []
+	var assigned: Dictionary = world.get_front(command.get("local_decision_front_id") if command.get("local_decision_front_id") is String else "")
+	if not assigned.is_empty():
+		data.front_assignment = {"front_id": assigned.id, "supply_stockpile_id": assigned.supply_stockpile_id}
+	for front_id in world.ids("fronts"):
+		var front: Dictionary = world.get_front(front_id)
+		if front.responsible_command_id == id and front.enabled and front.supply_stockpile_id not in data.protected_front_stockpile_ids:
+			data.protected_front_stockpile_ids.append(front.supply_stockpile_id)
+	for other_id in world.ids("commands"):
+		var other: Dictionary = world.get_command(other_id)
+		var parent: Variant = command.superior_command_id
+		var sibling: bool = other.id != id and parent != null and other.superior_command_id == parent and other.command_level == "LOCAL" and other.enabled
+		if not sibling and other.id != parent:
+			continue
+		var outbound: Dictionary = Router.find(world, id, other.id, true)
+		var inbound: Dictionary = Router.find(world, other.id, id, true)
+		data.communication_routes[other.id] = {"outbound": outbound.success, "inbound": inbound.success, "outbound_micro": Clock.units(outbound.details.total_travel_time) if outbound.success else 0, "inbound_micro": Clock.units(inbound.details.total_travel_time) if inbound.success else 0}
+		if sibling and outbound.success and inbound.success:
+			data.peers.append({"id": other.id, "command_level": other.command_level, "superior_command_id": other.superior_command_id})
+		if other.id == parent:
+			data.direct_superior = {"id": other.id, "enabled": other.enabled}
+	for transfer_id in world.ids("known_transfers"):
+		var transfer: Dictionary = world.get_entity("known_transfers", transfer_id)
+		if transfer.command_id == id: data.known_incoming.append(transfer)
 	return View.new(data)
 
 func snapshot() -> Dictionary:

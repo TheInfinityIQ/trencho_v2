@@ -27,11 +27,13 @@ func send(sender: String, recipient: String, type: String, payload: Dictionary) 
 	if not route.success:
 		return route
 	var id: String = sim.entity_id("message")
+	var resource_message := is_resource_resolution_message(type, payload)
+	var correlation: Variant = payload.get("need_id") if resource_message else sim.context.get("input_id")
 	var duration_us: int = Clock.units(world.clock().tick_duration)
 	var latency_us: int = Clock.units(route.details.total_travel_time)
 	var due_tick: int = world.clock().tick_index + ceili(float(latency_us) / duration_us)
-	var message := {"id": id, "sender_command_id": sender, "recipient_command_id": recipient, "message_type": type, "payload": payload.duplicate(true), "sent_at": sim.time(), "route_edge_ids": route.details.edge_ids, "delivery_time": Clock.seconds(due_tick, world.clock().tick_duration), "delivery_tick": due_tick, "state": "IN_TRANSIT", "correlation_id": sim.context.get("input_id"), "causation_event_id": sim.context.get("causation_event_id")}
-	sim.commit("MESSAGE_SENT", [change("messages", message)], {}, id)
+	var message := {"id": id, "sender_command_id": sender, "recipient_command_id": recipient, "message_type": type, "payload": payload.duplicate(true), "sent_at": sim.time(), "route_edge_ids": route.details.edge_ids, "delivery_time": Clock.seconds(due_tick, world.clock().tick_duration), "delivery_tick": due_tick, "state": "IN_TRANSIT", "correlation_id": correlation, "causation_event_id": sim.context.get("causation_event_id")}
+	sim.commit("MESSAGE_SENT", [change("messages", message)], {"need_id": payload.get("need_id"), "coordination_id": payload.get("coordination_id")} if resource_message else {}, id, null, correlation)
 	if due_tick <= world.clock().tick_index:
 		step()
 	return R.ok(id)
@@ -52,8 +54,15 @@ func step() -> void:
 		var intact: bool = failed_edges.is_empty() and world.get_command(message.recipient_command_id).enabled
 		message.state = "DELIVERED" if intact else "FAILED"
 		var diagnostics: Dictionary = {} if intact else {"reason_code": "ROUTE_DISABLED", "failed_edge_ids": failed_edges, "failed_edge_change_event_ids": edge_change_events}
+		if is_resource_resolution_message(message.message_type, message.payload) and message.payload.has("need_id"): diagnostics.need_id = message.payload.need_id
+		if is_resource_resolution_message(message.message_type, message.payload) and message.payload.has("coordination_id"): diagnostics.coordination_id = message.payload.coordination_id
 		# Delivery/failure belongs to the original send even when executed inside another input.
 		var cause: String = sim.commit("MESSAGE_DELIVERED" if intact else "MESSAGE_FAILED", [change("messages", message)], diagnostics, id, world.last_event(id), message.correlation_id)
 		if intact and message.message_type == "REPORT":
 			for fact in message.payload.get("facts", []):
 				Information.new(sim).ingest(message.recipient_command_id, fact, message.sender_command_id, id, cause)
+
+
+static func is_resource_resolution_message(type: String, payload: Dictionary) -> bool:
+	var subtype: Variant = payload.get("subtype")
+	return type in ["COORDINATION", "ESCALATION"] and subtype is String and (subtype.begins_with("AMMO_TRANSFER_") or subtype == "AMMO_NEED_ESCALATION")

@@ -26,6 +26,9 @@ func reserve(stockpile_id: String, resource: String, quantity: Variant, claimant
 		return R.fail("INSUFFICIENT_AVAILABLE_STOCK")
 	var id: String = sim.entity_id("reservation")
 	var record := reservation(id, stockpile_id, resource, quantity, claimant, purpose)
+	if sim.context.get("source_system") == "RESOURCE_RESOLUTION":
+		record.need_id = sim.context.input_id
+		record.coordination_id = sim.context.get("coordination_id")
 	s.reserved[resource] = s.reserved.get(resource, 0) + quantity
 	sim.commit("RESERVATION_CREATED", [change("stockpiles", s), change("resource_reservations", record)], {}, id)
 	return R.ok(id)
@@ -41,6 +44,8 @@ func retire(id: String, state: String) -> Dictionary:
 		return R.fail("UNAUTHORIZED")
 	if r.state != "ACTIVE":
 		return R.fail("INVALID_STATE")
+	if r.purpose_code == "PEER_AMMO_TRANSFER_OFFER" and r.get("coordination_id") != null:
+		return R.fail("INVALID_STATE", {"reason": "OFFER_OWNS_RESERVATION"})
 	# Shipment-linked claims are retired only by shipment lifecycle operations.
 	if world.shipment_for_reservation(id) != null:
 		return R.fail("INVALID_STATE", {"reason": "SHIPMENT_OWNS_RESERVATION"})
@@ -116,3 +121,19 @@ func audit() -> Dictionary:
 		var balance: float = l.created - stock - cargo - l.consumed - l.destroyed
 		result[resource] = {"created": l.created, "stockpiles": stock, "in_transit": cargo, "consumed": l.consumed, "destroyed": l.destroyed, "balance": balance, "valid": valid and absf(balance) < 0.000001}
 	return result
+# Expiry/cancellation maintenance for claims owned by a 105 offer, even if donor disabled.
+# No public input exposes this capability; validate the coordination binding and source.
+func release_peer_offer(reservation_id: String, coordination_id: String) -> Dictionary:
+	var c: Dictionary = world.get_entity("peer_coordinations", coordination_id)
+	var r: Dictionary = world.get_entity("resource_reservations", reservation_id)
+	if sim.context.get("source_system") != "RESOURCE_RESOLUTION" or c.is_empty() or reservation_id not in c.get("reservation_ids", []) or r.is_empty() or r.purpose_code != "PEER_AMMO_TRANSFER_OFFER" or r.claimant_command_id != c.peer_command_id or sim.actor() != c.peer_command_id or r.get("coordination_id") != c.id or sim.context.get("input_id") != c.need_id:
+		return R.fail("UNAUTHORIZED")
+	if r.state != "ACTIVE":
+		return R.fail("INVALID_STATE")
+	if world.shipment_for_reservation(reservation_id) != null:
+		return R.fail("INVALID_STATE")
+	var stock: Dictionary = world.get_stockpile(r.stockpile_id)
+	stock.reserved[r.resource_type_id] -= r.quantity
+	r.state = "RELEASED"
+	sim.commit("RESERVATION_RELEASED", [change("stockpiles", stock), change("resource_reservations", r)], {"coordination_id": coordination_id, "offer_maintenance": true}, r.id)
+	return R.ok(r.id)

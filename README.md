@@ -1,4 +1,4 @@
-# Trencho — Generation 2 simulation prototype (Step 104)
+# Trencho — Generation 2 simulation prototype (Step 105)
 
 A separate Godot 4.7.2 stable project implementing the simulation kernel requirements v0.1 and the designer's three clarifications. No code or architecture was copied from the tactical prototype.
 
@@ -76,3 +76,7 @@ Project 0.2.0 / schema 2B.1 extends the preserved accepted 2A baseline with fixe
 ## Step 104: autonomous local decisions
 
 Project0.2.1/schema2B.2 adds an opt-in LOCAL commander loop: complete local observations, belief-only integer candidate comparison, validated posture action and a reconstructable decision/outcome journal. Run ./tools/run.ps1 -Mode decisions for the targeted suite, or -Mode decision-demo and then -Mode replay -Package res://artifacts/run_step104 for the causal PRESS fixture. See [decision contract and journal](docs/DECISIONS_104.md). Earlier103 and2A fixtures remain available with autonomy off.
+
+## Step105: dynamic ammunition resolution
+
+Project0.2.2/schema2B.3 adds optional resource_resolution_enabled on a configured LOCAL commander: belief-based dynamic need, own reserves first, reserved peer offers/physical transfers, then a delivered direct-superior escalation snapshot. Superior allocation remains outside this step. Run -Mode needs for105 checks/A-E packages, or -Mode need-demo then -Mode replay -Package res://artifacts/run_step105. See [resource resolution contract](docs/RESOURCE_RESOLUTION_105.md). All prior demonstrations remain available with this feature off.
