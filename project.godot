@@ -1,0 +1,15 @@
+config_version=5
+
+[application]
+config/name="Trencho 2A — Simulation Kernel"
+run/main_scene="res://debug/inspector.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1100
+window/size/viewport_height=760
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
