@@ -4,6 +4,9 @@ const R = preload("res://kernel/result.gd")
 const Simulation = preload("res://kernel/simulation.gd")
 const Definition = preload("res://kernel/world_definition.gd")
 const ExactJSON = preload("res://kernel/authoritative_json.gd")
+const Areas = preload("res://kernel/strategic_area_definition.gd")
+const Observer = preload("res://kernel/player_observer.gd")
+const World = preload("res://kernel/world_state.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -27,6 +30,12 @@ static func normalize(value: Variant) -> Variant:
 static func equivalent(a: Variant, b: Variant) -> bool:
 	return JSON.stringify(normalize(a), "", true, true) == JSON.stringify(normalize(b), "", true, true)
 
+# Observer records have no run_id exception or numeric representation rewrite.
+# Keep the accepted authoritative comparer untouched while checking the new
+# presentation contract exactly, including every field and both ID namespaces.
+static func observer_equivalent(a: Variant, b: Variant) -> bool:
+	return JSON.stringify(a, "", true, true) == JSON.stringify(b, "", true, true)
+
 static func write_json(path: String, value: Variant, lines := false) -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
@@ -45,9 +54,17 @@ static func export_run(sim: RefCounted, directory: String) -> Dictionary:
 		return R.fail("EXPORT_FAILED", {"path": directory, "error": error})
 	var state: Dictionary = sim.snapshot()
 	var manifest := {"run_id": state.run_id, "project_version": state.project_version, "schema_version": state.schema_version, "engine_version": state.engine_version, "simulation_seed": state.simulation_seed, "tick_duration": state.clock.tick_duration, "start_time_utc": sim.start_time_utc, "end_tick": state.clock.tick_index, "initial_world_definition_id": state.initial_world_definition_id}
-	for pair in [["manifest.json", manifest, false], ["initial_world.json", sim.initial_world, false], ["final_world.json", state, false], ["events.jsonl", sim.events.all(), true], ["inputs.jsonl", sim.inputs, true]]:
+	for pair in [["initial_world.json", sim.initial_world, false], ["final_world.json", state, false], ["events.jsonl", sim.events.all(), true], ["inputs.jsonl", sim.inputs, true]]:
 		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]):
 			return R.fail("EXPORT_FAILED", {"file": pair[0]})
+	manifest.player_observation_enabled = not sim.player_observer.configuration().is_empty()
+	if manifest.player_observation_enabled:
+		for pair in [["player_observer_config.json", {"strategic_areas": sim.player_observer.configuration()}, false], ["player_observation_events.jsonl", sim.player_observer.events(), true], ["final_player_observer.json", {"state": sim.player_observer.snapshot(), "view": sim.player_view().snapshot()}, false]]:
+			if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
+		manifest.streams = {"authoritative": {"file": "events.jsonl", "schema_version": Definition.SCHEMA_VERSION, "sha256": FileAccess.get_sha256(directory.path_join("events.jsonl"))}, "player_observation": {"file": "player_observation_events.jsonl", "schema_version": "2C.1.player-observation.1", "sha256": FileAccess.get_sha256(directory.path_join("player_observation_events.jsonl"))}}
+		manifest.observer_configuration_sha256 = FileAccess.get_sha256(directory.path_join("player_observer_config.json"))
+		manifest.observer_projection_sha256 = FileAccess.get_sha256(directory.path_join("final_player_observer.json"))
+	if not write_json(directory.path_join("manifest.json"), manifest): return R.fail("EXPORT_FAILED", {"file": "manifest.json"})
 	return R.ok(null, {"directory": directory})
 
 static func read_json(path: String) -> Dictionary:
@@ -78,9 +95,9 @@ static func read_lines(path: String) -> Dictionary:
 		result.append(parsed.details.value)
 	return R.ok(null, {"value": result})
 
-static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int) -> Dictionary:
+static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = []) -> Dictionary:
 	var sim := Simulation.new()
-	var initialized := sim.initialize_snapshot(initial)
+	var initialized := sim.initialize_snapshot(initial, strategic_areas)
 	if not initialized.success:
 		return initialized
 	for record in recorded_inputs:
@@ -108,7 +125,25 @@ static func replay_package(directory: String) -> Dictionary:
 	var manifest: Dictionary = loaded["manifest.json"]
 	if manifest.get("schema_version") != Definition.SCHEMA_VERSION or manifest.get("project_version") != Definition.PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
-	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick)
+	if not manifest.get("player_observation_enabled") is bool: return R.fail("INVALID_OBSERVER_PACKAGE")
+	var configuration: Array = []
+	if manifest.player_observation_enabled:
+		for filename in ["player_observer_config.json", "player_observation_events.jsonl", "final_player_observer.json"]:
+			var result := read_lines(directory.path_join(filename)) if filename.ends_with("jsonl") else read_json(directory.path_join(filename))
+			if not result.success: return result
+			loaded[filename] = result.details.value
+		if not loaded["player_observer_config.json"].get("strategic_areas") is Dictionary: return R.fail("INVALID_OBSERVER_PACKAGE")
+		for id in loaded["player_observer_config.json"].strategic_areas:
+			var area: Variant = loaded["player_observer_config.json"].strategic_areas[id]
+			if not area is Dictionary or area.get("id") != id: return R.fail("INVALID_OBSERVER_PACKAGE")
+		configuration = loaded["player_observer_config.json"].strategic_areas.values()
+		if configuration.is_empty(): return R.fail("INVALID_OBSERVER_PACKAGE")
+		var streams: Variant = manifest.get("streams")
+		if not streams is Dictionary: return R.fail("INVALID_OBSERVER_PACKAGE")
+		for pair in [["authoritative", "events.jsonl", Definition.SCHEMA_VERSION], ["player_observation", "player_observation_events.jsonl", "2C.1.player-observation.1"]]:
+			if not streams.get(pair[0]) is Dictionary or streams[pair[0]].get("file") != pair[1] or streams[pair[0]].get("schema_version") != pair[2] or streams[pair[0]].get("sha256") != FileAccess.get_sha256(directory.path_join(pair[1])): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
+		if manifest.get("observer_configuration_sha256") != FileAccess.get_sha256(directory.path_join("player_observer_config.json")) or manifest.get("observer_projection_sha256") != FileAccess.get_sha256(directory.path_join("final_player_observer.json")): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
+	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration)
 	if not replayed.success:
 		return replayed
 	var sim: RefCounted = replayed.details.simulation
@@ -121,4 +156,23 @@ static func replay_package(directory: String) -> Dictionary:
 			if not equivalent(actual_events[index], expected_events[index]):
 				return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "first_event_index": index, "actual_normalized": JSON.stringify(normalize(actual_events[index]), "", true, true), "expected_normalized": JSON.stringify(normalize(expected_events[index]), "", true, true)})
 		return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "actual_event_count": actual_events.size(), "expected_event_count": expected_events.size()})
-	return R.ok(null, {"state_match": true, "events_match": true, "event_count": sim.events.count(), "end_tick": manifest.end_tick})
+	var details := {"state_match": true, "events_match": true, "event_count": sim.events.count(), "end_tick": manifest.end_tick}
+	if manifest.player_observation_enabled:
+		var observed := {"state": sim.player_observer.snapshot(), "view": sim.player_view().snapshot()}
+		if not observer_equivalent(sim.player_observer.events(), loaded["player_observation_events.jsonl"]) or not observer_equivalent(observed, loaded["final_player_observer.json"]): return R.fail("PLAYER_OBSERVATION_REPLAY_MISMATCH")
+		var reconstructed := reconstruct_player(loaded["initial_world.json"], configuration, loaded["events.jsonl"])
+		if not reconstructed.success or not observer_equivalent(reconstructed.details.events, sim.player_observer.events()) or not observer_equivalent(reconstructed.details.projection, observed): return R.fail("PLAYER_OBSERVATION_RECONSTRUCTION_MISMATCH")
+		details.player_events_match = true
+		details.player_projection_match = true
+		details.player_event_count = sim.player_observer.events().size()
+	return R.ok(null, details)
+
+static func reconstruct_player(initial: Dictionary, configuration: Variant, world_events: Array) -> Dictionary:
+	var valid := Areas.normalize(configuration, initial.locations, initial.fronts, {})
+	if not valid.success: return valid
+	var world := World.new(initial)
+	var observer := Observer.new(valid.details.areas)
+	for event in world_events:
+		world.apply_event(event)
+		observer.observe(event, world)
+	return R.ok(null, {"events": observer.events(), "projection": {"state": observer.snapshot(), "view": observer.view().snapshot()}, "world": world.snapshot()})

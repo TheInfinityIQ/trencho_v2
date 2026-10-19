@@ -88,3 +88,7 @@ Project0.2.3/schema2B.4 adds opt-in ammunition_arbitration_enabled on OPERATIONA
 ## Step107: integrated unattended hierarchy
 
 Project0.2.4/schema2B.5 integrates the accepted command/logistics systems for25seconds with zero runtime inputs and the specified initial strategic cargo. Run -Mode integrated -TimeoutSeconds90, then -Mode replay -Package res://artifacts/run_step107. See [fixed fixture and causal audits](docs/INTEGRATED_107.md) and the explicit [acceptance amendment](docs/AMENDMENT_107.md). Policies and startup safeguards remain unchanged; no2C is implemented.
+
+## Step109: qualitative player observation boundary
+
+Project0.3.0/schema2C.1 adds configured StrategicAreas and a detached qualitative PlayerObserverView. A separate persisted observation stream leaves authoritative events and IDs byte-identical with observation enabled/disabled. Player visibility never updates command knowledge or AI. Run -Mode observer -TimeoutSeconds150, then -Mode replay -Package res://artifacts/run_step109_A. See [boundary, replay contract and evidence](docs/PLAYER_OBSERVATION_109.md) and [approved event split](docs/AMENDMENT_109.md). No player commands or strategic UI yet.

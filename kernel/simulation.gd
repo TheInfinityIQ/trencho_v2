@@ -17,6 +17,8 @@ const Journal = preload("res://kernel/decision_journal.gd")
 const Router = preload("res://kernel/router.gd")
 const Resolution = preload("res://kernel/resource_resolution_service.gd")
 const Arbitration = preload("res://kernel/superior_arbitration_service.gd")
+const Areas = preload("res://kernel/strategic_area_definition.gd")
+const Observer = preload("res://kernel/player_observer.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -26,6 +28,7 @@ var context: Dictionary = {}
 var start_time_utc: String
 var _input_sequence := 0
 var _rng := RandomNumberGenerator.new()
+var player_observer := Observer.new()
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
@@ -34,12 +37,15 @@ func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictio
 	var loaded: Dictionary = Definition.load_definition(definition, seed, run_id)
 	if not loaded.success:
 		return loaded
-	return initialize_snapshot(loaded.details.snapshot)
+	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []))
 
-func initialize_snapshot(snapshot: Dictionary) -> Dictionary:
+func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = []) -> Dictionary:
 	var validation: Dictionary = Definition.validate_initial_snapshot(snapshot)
 	if not validation.success:
 		return validation
+	var configured := Areas.normalize(strategic_areas, snapshot.locations, snapshot.fronts, {})
+	if not configured.success: return configured
+	player_observer = Observer.new(configured.details.areas)
 	initial_world = snapshot.duplicate(true)
 	# Restore the new fixed-point front fields to integer types after JSON parsing.
 	initial_world.fronts = validation.details.fronts.duplicate(true)
@@ -115,7 +121,11 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 	var event := {"event_id": id, "event_type": type, "schema_version": Definition.SCHEMA_VERSION, "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
 	world.apply_event(event)
 	events.append(event)
+	player_observer.observe(event, world)
 	return id
+
+func player_view() -> RefCounted:
+	return player_observer.view()
 
 # Input order within a tick is append order. Tick updates finish before external inputs at that tick.
 func execute(input: Dictionary, is_privileged := false) -> Dictionary:
