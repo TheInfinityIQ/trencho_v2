@@ -1,6 +1,6 @@
 param(
     [string]$GodotPath = $env:GODOT_BIN,
-    [ValidateSet('test','demo','replay','import','smoke','visual')][string]$Mode = 'test',
+    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless')][string]$Mode = 'test',
     [string]$Package = 'res://artifacts/run_demo',
     [int]$TimeoutSeconds = 60
 )
@@ -32,6 +32,8 @@ switch ($Mode) {
     'import' { $engineArguments += @('--editor','--import') }
     'smoke' { $engineArguments += @('--quit-after','3') }
     'test' { $engineArguments += @('--script','res://tests/acceptance.gd') }
+    'closeout' { $engineArguments += @('--script','res://tests/closeout_regression.gd') }
+    'inspector-headless' { $engineArguments += @('--script','res://tests/inspector_headless.gd') }
     'visual' { $engineArguments += @('--script','res://tests/inspector_smoke.gd') }
     'demo' { $engineArguments += @('--script','res://tools/cli.gd','--','demo',$Package) }
     'replay' { $engineArguments += @('--script','res://tools/cli.gd','--','replay',$Package) }

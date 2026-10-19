@@ -46,6 +46,8 @@ Messages freeze a directed route when sent. Delivery checks that route; there is
 
 REPORT payloads may contain a `facts` array. Facts are validated before sending and frozen in the message. Successful delivery explicitly invokes information ingestion with actual sender, message and delivery-event provenance. Other message types are stored/delivered without gameplay interpretation. A message can contain an ordinary REPORT payload without facts; it then creates no belief. Failed reports never ingest.
 
+Closeout explicitly carries the originating operation correlation through send, delivery and ingestion while preserving immediate causal parents. Message failures include structured unavailable-edge diagnostics and references to disabling events. The event shape remains additive under schema 2A.1; project version 0.1.1 distinguishes its corrected normalized event output from earlier runs.
+
 Current belief excludes records not yet received/observed and those expired at or before query time. It chooses greatest observation time, greatest receipt time, then ascending stable record ID. Confidence is retained but not used to blend or override that rule. Conflicting and expired records stay in history.
 
 ## Deliberate boundaries and limitations
@@ -56,6 +58,7 @@ Current belief excludes records not yet received/observed and those expired at o
 * JSON values must be finite and numerical inputs must remain within the exactly representable JSON integer range. Default ammunition uses integral quantities; a synthetic fractional resource is instantiated only by an acceptance fixture. Resource audit uses an absolute 1e-6 tolerance for fractional arithmetic; integer ammunition checks are exact in the tested range.
 * Export writes the five required files and reports file errors; it does not implement crash-atomic directory publication. A partial package is rejected by replay. Export paths are developer-provided; no player-facing storage or save-game compatibility is claimed.
 * Dictionary projection updates duplicate changed entity records. No performance or target-scale claim has been made. Only the specified fixture and test workloads were exercised.
+* Semantic-event versus high-frequency-trace separation is a non-blocking 2B carry-forward item. Before scale substantially increases, review separate channels/files, trace controls and retention policies while preserving the chosen reconstruction/replay contract. No speculative logging redesign is part of 2A closeout.
 * Debug export defaults to the writable source project's `artifacts/` directory. Packaged executable export and target-platform release validation are outside the 2A gate and were not performed.
 
 ## Authoritative API references checked

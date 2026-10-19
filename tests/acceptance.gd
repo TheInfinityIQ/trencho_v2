@@ -7,6 +7,8 @@ const Router = preload("res://kernel/router.gd")
 const Authority = preload("res://kernel/authority_service.gd")
 const Information = preload("res://kernel/information_service.gd")
 const World = preload("res://kernel/world_state.gd")
+const Closeout = preload("res://tests/closeout_cases.gd")
+const Definition = preload("res://kernel/world_definition.gd")
 var checks: Array = []
 var failures: Array = []
 
@@ -73,7 +75,10 @@ func _initialize() -> void:
 	_test_beliefs()
 	_test_determinism()
 	_test_validation()
-	var report := {"schema_version": "2A.1", "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
+	var closeout: Dictionary = Closeout.run()
+	for item in closeout.checks:
+		check(item.passed, item.name)
+	var report := {"schema_version": "2A.1", "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
 	Exporter.write_json("res://artifacts/acceptance_results.json", report)
 	print("TRENCHO 2A ACCEPTANCE: %d checks, %d failed" % [checks.size(), failures.size()])
 	quit(0 if failures.is_empty() else 1)
@@ -420,6 +425,9 @@ func _test_validation() -> void:
 	var snapshot: Dictionary = sim.initial_world.duplicate(true)
 	snapshot.schema_version = "future"
 	error(Exporter.replay(snapshot, [], 0), "UNSUPPORTED_SNAPSHOT", "unknown schema never silently reinterpreted")
+	snapshot = sim.initial_world.duplicate(true)
+	snapshot.project_version = "0.1.0"
+	error(Exporter.replay(snapshot, [], 0), "UNSUPPORTED_SNAPSHOT", "prior simulation version cannot silently reuse corrected event semantics")
 	var replayed: Dictionary = Exporter.replay(sim.initial_world, sim.inputs, sim.world.clock().tick_index)
 	check(replayed.success and Exporter.equivalent(replayed.details.simulation.snapshot(), sim.snapshot()), "failed input attempts replay consistently")
 	var previous: Dictionary = sim.snapshot()

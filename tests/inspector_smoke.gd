@@ -9,6 +9,11 @@ func _capture() -> void:
 	root.add_child(inspector)
 	await process_frame
 	await process_frame
+	if inspector.sim != null or not inspector.status.text.begins_with("Ready"):
+		print("INSPECTOR SMOKE: startup unexpectedly ran the simulation")
+		quit(1)
+		return
+	inspector._run()
 	if inspector.sim == null or not inspector.status.text.begins_with("Demonstration passed"):
 		print("INSPECTOR SMOKE: failed initialization")
 		quit(1)

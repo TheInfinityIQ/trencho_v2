@@ -41,13 +41,19 @@ func step() -> void:
 		var message: Dictionary = world.get_entity("messages", id)
 		if message.state != "IN_TRANSIT" or message.delivery_tick > world.clock().tick_index:
 			continue
-		var intact := true
+		var failed_edges: Array = []
+		var edge_change_events: Dictionary = {}
 		for edge_id in message.route_edge_ids:
 			var edge: Dictionary = world.get_entity("communication_edges", edge_id)
-			intact = intact and edge.enabled and world.get_command(edge.from_command_id).enabled and world.get_command(edge.to_command_id).enabled
-		intact = intact and world.get_command(message.recipient_command_id).enabled
+			if not edge.enabled or not world.get_command(edge.from_command_id).enabled or not world.get_command(edge.to_command_id).enabled:
+				failed_edges.append(edge_id)
+			if not edge.enabled:
+				edge_change_events[edge_id] = world.last_event(edge_id)
+		var intact: bool = failed_edges.is_empty() and world.get_command(message.recipient_command_id).enabled
 		message.state = "DELIVERED" if intact else "FAILED"
-		var cause: String = sim.commit("MESSAGE_DELIVERED" if intact else "MESSAGE_FAILED", [change("messages", message)], {}, id)
+		var diagnostics: Dictionary = {} if intact else {"reason_code": "ROUTE_DISABLED", "failed_edge_ids": failed_edges, "failed_edge_change_event_ids": edge_change_events}
+		# Delivery/failure belongs to the original send even when executed inside another input.
+		var cause: String = sim.commit("MESSAGE_DELIVERED" if intact else "MESSAGE_FAILED", [change("messages", message)], diagnostics, id, world.last_event(id), message.correlation_id)
 		if intact and message.message_type == "REPORT":
 			for fact in message.payload.get("facts", []):
 				Information.new(sim).ingest(message.recipient_command_id, fact, message.sender_command_id, id, cause)

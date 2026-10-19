@@ -1,4 +1,6 @@
-# Diagnostic schemas — 2A.1 / project 0.1.0
+# Diagnostic schemas — 2A.1 / project 0.1.1
+
+The closeout adds communication diagnostics and repairs correlation metadata without changing physical simulation semantics. These additive envelope/payload fields retain schema `2A.1`; the simulation project version is bumped to `0.1.1` because normalized event output differs from `0.1.0`. Older packages remain inspectable data and can be replayed with their original source revision; the closeout loader explicitly rejects their older project version rather than silently changing their replay output.
 
 ## Run directory
 
@@ -55,6 +57,12 @@ Every JSONL line contains:
 `event_id` is ordered application sequence. `correlation_id` links the initiating input throughout autonomous shipment/message updates. `causation_event_id` identifies an earlier input/operation/entity event or message delivery; multi-event transfers retain explicit links. This supports tracing origin without treating chronology alone as a causal claim.
 
 `payload.changes` is an ordered array of `{table, id, value}` complete changed entity projections. `clock` replaces the clock projection. `run` patches run metadata keys such as `input_sequence` and `ended`. These are validated internal changes created by services; they are not an external arbitrary-write API. Atomic transfers put all affected records in one event. Informational companion events can have an empty changes array.
+
+Communication closeout guarantees:
+
+* `MESSAGE_SENT`, its `MESSAGE_DELIVERED` and every resulting `INFORMATION_INGESTED` share the originating message/input correlation ID. Delivery points causally to the send event; ingestion points to the immediate delivery event. This also holds for zero-latency delivery and multiple messages delivered at one tick. Direct privileged ingestion keeps its own input correlation.
+* `MESSAGE_FAILED.payload.reason_code` is `ROUTE_DISABLED` for the current unavailable-route behavior. `failed_edge_ids` lists unavailable required route edges in route order. An enabled edge whose endpoint command is disabled is also unavailable. The existing self-message/disabled-recipient corner can have an empty edge array because its zero-edge route contains no edge.
+* `failed_edge_change_event_ids` maps each actually disabled edge to the authoritative event that most recently changed it. The failed message's causation points to the original send, while this payload records the independent edge-change causes explicitly. Correlation remains the original send operation, never the input that disabled an edge.
 
 All required minimum event types are supported with the designer's dispatch rename. Added event types are:
 

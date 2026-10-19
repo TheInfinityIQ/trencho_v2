@@ -2,7 +2,9 @@
 
 A separate Godot 4.7.2 stable project implementing the simulation kernel requirements v0.1 and the designer's three clarifications. No code or architecture was copied from the tactical prototype.
 
-Open `project.godot` with **Godot 4.7.2 stable**, then run the main scene. The developer inspector executes the required demonstration. Its export button writes a run package and verifies replay from the files on disk.
+Open `project.godot` with **Godot 4.7.2 stable**, then run the main scene. The developer inspector starts idle; click **Run demonstration** to execute the fixture. Its export button writes a run package and verifies replay from the files on disk.
+
+After a reported system freeze on editor Play, presentation is capped at 30 FPS with idle redraw throttling. The cause is unconfirmed; see [startup diagnostics](docs/STARTUP_DIAGNOSTICS.md). For a standalone window without editor embedding, run `./tools/open_inspector.ps1` in PowerShell 7. That launcher was not graphically retested during the freeze investigation.
 
 ## Run the checks
 
@@ -58,5 +60,9 @@ It creates 1,000 ammunition at the source; moves 600 to HQ; sends 300 to A and 2
 At tick 17 (1.7 logical seconds), stock is source **400**, HQ **100**, A **300**, B **200**. There is no cargo remaining and no consumption or destruction in this fixture. A separate acceptance group covers those destruction/consumption paths.
 
 The diagnostic run contains 93 ordered events. Tests compare independent same-seed runs, a different seed without stochastic policy, replay from exported files, and reconstruction by applying events alone.
+
+## 2A accepted closeout
+
+Project version `0.1.1` retains schema `2A.1`. The two mandatory closeout fixes propagate correlation through information ingestion and add structured message-failure diagnostics. Run `./tools/run.ps1 -Mode closeout` for targeted regressions, `-Mode test` for the full suite, and `-Mode inspector-headless` to verify the preserved idle-startup mitigations without a graphics window. See `docs/CLOSEOUT.md` for acceptance scope, results and the freeze/tag procedure. The earlier 0.1.0 archive remains a historical artifact.
 
 See [architecture](docs/ARCHITECTURE.md), [schemas](docs/SCHEMAS.md), [designer clarifications](docs/DESIGN_CLARIFICATIONS.md), and [acceptance mapping](docs/ACCEPTANCE.md).

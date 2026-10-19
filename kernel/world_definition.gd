@@ -2,13 +2,14 @@ extends RefCounted
 
 const R = preload("res://kernel/result.gd")
 const Clock = preload("res://kernel/clock.gd")
+const PROJECT_VERSION = "0.1.1"
 
 static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dictionary:
 	if not R.json_compatible(data) or not R.json_compatible(seed):
 		return R.fail("INVALID_WORLD_DEFINITION", {"reason": "NON_JSON_VALUE"})
 	if not data.get("id", "") is String or not data.get("public_facts", {}) is Dictionary:
 		return R.fail("INVALID_WORLD_DEFINITION")
-	var state := {"schema_version": "2A.1", "project_version": "0.1.0", "run_id": run_id, "simulation_seed": seed, "engine_version": Engine.get_version_info().string, "initial_world_definition_id": data.get("id", ""), "event_sequence": 0, "input_sequence": 0, "ended": false, "clock": {"tick_index": 0, "tick_duration": data.get("tick_duration", 0.1), "simulation_time_seconds": 0.0}, "public_facts": data.get("public_facts", {}).duplicate(true)}
+	var state := {"schema_version": "2A.1", "project_version": PROJECT_VERSION, "run_id": run_id, "simulation_seed": seed, "engine_version": Engine.get_version_info().string, "initial_world_definition_id": data.get("id", ""), "event_sequence": 0, "input_sequence": 0, "ended": false, "clock": {"tick_index": 0, "tick_duration": data.get("tick_duration", 0.1), "simulation_time_seconds": 0.0}, "public_facts": data.get("public_facts", {}).duplicate(true)}
 	if state.initial_world_definition_id.is_empty() or not (state.clock.tick_duration is float or state.clock.tick_duration is int) or not is_finite(float(state.clock.tick_duration)) or Clock.units(state.clock.tick_duration) <= 0:
 		return R.fail("INVALID_WORLD_DEFINITION")
 	state.clock.tick_duration = Clock.units(state.clock.tick_duration) / 1000000.0
@@ -126,7 +127,7 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 	for key in ["schema_version", "project_version", "engine_version", "run_id", "simulation_seed", "initial_world_definition_id", "event_sequence", "input_sequence", "clock", "rng_state", "ended", "public_facts", "locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "messages", "resource_reservations", "information_records", "ledger"]:
 		if not snapshot.has(key):
 			return R.fail("INVALID_SNAPSHOT", {"missing": key})
-	if snapshot.schema_version != "2A.1" or snapshot.project_version != "0.1.0":
+	if snapshot.schema_version != "2A.1" or snapshot.project_version != PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
 	if snapshot.engine_version != Engine.get_version_info().string:
 		return R.fail("ENGINE_VERSION_MISMATCH")

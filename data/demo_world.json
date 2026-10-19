@@ -4,35 +4,35 @@
   "public_facts": {"scenario": "2A diagnostic fixture"},
   "resource_types": [{"id": "AMMUNITION", "display_name": "Ammunition", "unit_name": "ammo", "allow_fractional_quantity": false}],
   "locations": [
-    {"id": "OFFSCREEN_SOURCE", "location_type": "OFFSCREEN_SOURCE", "position_2d": [0, 0]},
-    {"id": "ARMY_HQ", "location_type": "HQ", "position_2d": [0, 100]},
-    {"id": "DEPOT_A", "location_type": "DEPOT", "position_2d": [-100, 200]},
-    {"id": "DEPOT_B", "location_type": "DEPOT", "position_2d": [100, 200]}
+	{"id": "OFFSCREEN_SOURCE", "location_type": "OFFSCREEN_SOURCE", "position_2d": [0, 0]},
+	{"id": "ARMY_HQ", "location_type": "HQ", "position_2d": [0, 100]},
+	{"id": "DEPOT_A", "location_type": "DEPOT", "position_2d": [-100, 200]},
+	{"id": "DEPOT_B", "location_type": "DEPOT", "position_2d": [100, 200]}
   ],
   "commands": [
-    {"id": "STRATEGIC_COMMAND", "command_level": "STRATEGIC"},
-    {"id": "ARMY_COMMAND", "command_level": "OPERATIONAL", "superior_command_id": "STRATEGIC_COMMAND", "directly_controlled_location_ids": ["ARMY_HQ"], "directly_controlled_stockpile_ids": ["HQ_STOCK"]},
-    {"id": "LOCAL_A", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_A"], "directly_controlled_stockpile_ids": ["A_STOCK"]},
-    {"id": "LOCAL_B", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_B"], "directly_controlled_stockpile_ids": ["B_STOCK"]}
+	{"id": "STRATEGIC_COMMAND", "command_level": "STRATEGIC"},
+	{"id": "ARMY_COMMAND", "command_level": "OPERATIONAL", "superior_command_id": "STRATEGIC_COMMAND", "directly_controlled_location_ids": ["ARMY_HQ"], "directly_controlled_stockpile_ids": ["HQ_STOCK"]},
+	{"id": "LOCAL_A", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_A"], "directly_controlled_stockpile_ids": ["A_STOCK"]},
+	{"id": "LOCAL_B", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_B"], "directly_controlled_stockpile_ids": ["B_STOCK"]}
   ],
   "stockpiles": [
-    {"id": "SOURCE_STOCK", "location_id": "OFFSCREEN_SOURCE"},
-    {"id": "HQ_STOCK", "location_id": "ARMY_HQ", "owner_command_id": "ARMY_COMMAND"},
-    {"id": "A_STOCK", "location_id": "DEPOT_A", "owner_command_id": "LOCAL_A"},
-    {"id": "B_STOCK", "location_id": "DEPOT_B", "owner_command_id": "LOCAL_B"}
+	{"id": "SOURCE_STOCK", "location_id": "OFFSCREEN_SOURCE"},
+	{"id": "HQ_STOCK", "location_id": "ARMY_HQ", "owner_command_id": "ARMY_COMMAND"},
+	{"id": "A_STOCK", "location_id": "DEPOT_A", "owner_command_id": "LOCAL_A"},
+	{"id": "B_STOCK", "location_id": "DEPOT_B", "owner_command_id": "LOCAL_B"}
   ],
   "logistics_edges": [
-    {"id": "source_hq", "from_location_id": "OFFSCREEN_SOURCE", "to_location_id": "ARMY_HQ", "travel_time_seconds": 0.3},
-    {"id": "hq_a", "from_location_id": "ARMY_HQ", "to_location_id": "DEPOT_A", "travel_time_seconds": 0.2},
-    {"id": "hq_b", "from_location_id": "ARMY_HQ", "to_location_id": "DEPOT_B", "travel_time_seconds": 0.5},
-    {"id": "a_b", "from_location_id": "DEPOT_A", "to_location_id": "DEPOT_B", "travel_time_seconds": 0.4}
+	{"id": "source_hq", "from_location_id": "OFFSCREEN_SOURCE", "to_location_id": "ARMY_HQ", "travel_time_seconds": 0.3},
+	{"id": "hq_a", "from_location_id": "ARMY_HQ", "to_location_id": "DEPOT_A", "travel_time_seconds": 0.2},
+	{"id": "hq_b", "from_location_id": "ARMY_HQ", "to_location_id": "DEPOT_B", "travel_time_seconds": 0.5},
+	{"id": "a_b", "from_location_id": "DEPOT_A", "to_location_id": "DEPOT_B", "travel_time_seconds": 0.4}
   ],
   "communication_edges": [
-    {"id": "army_a", "from_command_id": "ARMY_COMMAND", "to_command_id": "LOCAL_A", "latency_seconds": 0.3},
-    {"id": "a_army", "from_command_id": "LOCAL_A", "to_command_id": "ARMY_COMMAND", "latency_seconds": 0.3},
-    {"id": "army_b", "from_command_id": "ARMY_COMMAND", "to_command_id": "LOCAL_B", "latency_seconds": 0.3},
-    {"id": "b_army", "from_command_id": "LOCAL_B", "to_command_id": "ARMY_COMMAND", "latency_seconds": 0.3},
-    {"id": "a_b_radio", "from_command_id": "LOCAL_A", "to_command_id": "LOCAL_B", "latency_seconds": 0.2},
-    {"id": "b_a_radio", "from_command_id": "LOCAL_B", "to_command_id": "LOCAL_A", "latency_seconds": 0.2}
+	{"id": "army_a", "from_command_id": "ARMY_COMMAND", "to_command_id": "LOCAL_A", "latency_seconds": 0.3},
+	{"id": "a_army", "from_command_id": "LOCAL_A", "to_command_id": "ARMY_COMMAND", "latency_seconds": 0.3},
+	{"id": "army_b", "from_command_id": "ARMY_COMMAND", "to_command_id": "LOCAL_B", "latency_seconds": 0.3},
+	{"id": "b_army", "from_command_id": "LOCAL_B", "to_command_id": "ARMY_COMMAND", "latency_seconds": 0.3},
+	{"id": "a_b_radio", "from_command_id": "LOCAL_A", "to_command_id": "LOCAL_B", "latency_seconds": 0.2},
+	{"id": "b_a_radio", "from_command_id": "LOCAL_B", "to_command_id": "LOCAL_A", "latency_seconds": 0.2}
   ]
 }

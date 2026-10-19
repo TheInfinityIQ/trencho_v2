@@ -24,7 +24,8 @@ func ingest(owner: String, fact: Dictionary, source: String, message_id: Variant
 		return R.fail("INVALID_ENTITY")
 	var id: String = sim.entity_id("information")
 	var record := {"id": id, "owner_command_id": owner, "subject_entity_id": fact.subject_entity_id, "fact_key": fact.fact_key, "value": fact.value, "source_command_id": source if message_id != null else null, "source_system": source if message_id == null else null, "observed_at": fact.observed_at, "received_at": sim.time(), "confidence": fact.confidence, "expires_at": fact.get("expires_at"), "source_message_id": message_id, "causation_event_id": cause}
-	sim.commit("INFORMATION_INGESTED", [change("information_records", record)], {}, id, cause)
+	var correlation: Variant = world.get_entity("messages", message_id).get("correlation_id") if message_id != null else null
+	sim.commit("INFORMATION_INGESTED", [change("information_records", record)], {}, id, cause, correlation)
 	return R.ok(id)
 
 func get_current_belief(owner: String, subject: String, key: String, at_time: float) -> Dictionary:

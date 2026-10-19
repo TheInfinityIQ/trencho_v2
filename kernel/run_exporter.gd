@@ -2,6 +2,7 @@ extends RefCounted
 
 const R = preload("res://kernel/result.gd")
 const Simulation = preload("res://kernel/simulation.gd")
+const Definition = preload("res://kernel/world_definition.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -101,7 +102,7 @@ static func replay_package(directory: String) -> Dictionary:
 			return result
 		loaded[filename] = result.details.value
 	var manifest: Dictionary = loaded["manifest.json"]
-	if manifest.get("schema_version") != "2A.1" or manifest.get("project_version") != "0.1.0":
+	if manifest.get("schema_version") != "2A.1" or manifest.get("project_version") != Definition.PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
 	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick)
 	if not replayed.success:

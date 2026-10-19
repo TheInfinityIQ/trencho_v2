@@ -65,7 +65,7 @@ func entity_id(type: String) -> String:
 func time() -> float:
 	return world.clock().simulation_time_seconds
 
-func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Variant = null, cause: Variant = null) -> String:
+func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Variant = null, cause: Variant = null, operation_correlation: Variant = null) -> String:
 	var body: Dictionary = payload.duplicate(true)
 	body.changes = changes.duplicate(true)
 	body.privileged = privileged()
@@ -82,7 +82,7 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 			subject_location = shipment.current_location_id
 	var id := "event:%010d" % (world.sequence() + 1)
 	var event_clock: Dictionary = changes[0].value if type == "TICK_ADVANCED" else world.clock()
-	var correlation: Variant = context.get("input_id", world.correlation(subject) if subject is String else null)
+	var correlation: Variant = operation_correlation if operation_correlation != null else context.get("input_id", world.correlation(subject) if subject is String else null)
 	var causation: Variant = cause if cause != null else context.get("causation_event_id", world.last_event(subject) if subject is String else null)
 	var event := {"event_id": id, "event_type": type, "schema_version": "2A.1", "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
 	world.apply_event(event)
