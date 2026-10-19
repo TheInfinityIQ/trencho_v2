@@ -19,6 +19,8 @@ const Resolution = preload("res://kernel/resource_resolution_service.gd")
 const Arbitration = preload("res://kernel/superior_arbitration_service.gd")
 const Areas = preload("res://kernel/strategic_area_definition.gd")
 const Observer = preload("res://kernel/player_observer.gd")
+const Prompts = preload("res://kernel/player_prompt_service.gd")
+const PromptView = preload("res://kernel/player_prompt_view.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -29,6 +31,8 @@ var start_time_utc: String
 var _input_sequence := 0
 var _rng := RandomNumberGenerator.new()
 var player_observer := Observer.new()
+var player_prompts := Prompts.new()
+var _prompt_input_sequence := 0
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
@@ -46,6 +50,8 @@ func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = []) ->
 	var configured := Areas.normalize(strategic_areas, snapshot.locations, snapshot.fronts, {})
 	if not configured.success: return configured
 	player_observer = Observer.new(configured.details.areas)
+	player_prompts = Prompts.new()
+	_prompt_input_sequence = 0
 	initial_world = snapshot.duplicate(true)
 	# Restore the new fixed-point front fields to integer types after JSON parsing.
 	initial_world.fronts = validation.details.fronts.duplicate(true)
@@ -127,6 +133,23 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 func player_view() -> RefCounted:
 	return player_observer.view()
 
+func player_prompt_view() -> RefCounted:
+	return player_prompts.view()
+
+func command_prompt_view(command_id: String) -> RefCounted:
+	var command: Dictionary = world.get_command(command_id)
+	if command.is_empty() or command.command_level != "OPERATIONAL": return PromptView.new()
+	return player_prompts.view(command_id)
+
+func _submit_player_prompt(input: Dictionary, is_privileged: bool) -> Dictionary:
+	# Separate intent input sequence: legacy world IDs/context remain untouched.
+	_prompt_input_sequence += 1
+	var input_id := "player-prompt-input:%010d" % _prompt_input_sequence
+	var result := Prompts.validate(input, player_observer.configuration(), world)
+	if result.success: result = player_prompts.submit(input, input_id, time())
+	inputs.append({"schema_version": Definition.SCHEMA_VERSION, "input_id": input_id, "tick_index": world.clock().tick_index, "privileged": is_privileged, "command": input.duplicate(true), "result": result.duplicate(true)})
+	return result
+
 # Input order within a tick is append order. Tick updates finish before external inputs at that tick.
 func execute(input: Dictionary, is_privileged := false) -> Dictionary:
 	if world == null or world.ended():
@@ -134,6 +157,7 @@ func execute(input: Dictionary, is_privileged := false) -> Dictionary:
 	# Reject non-serializable calls before they can alter history or run identity.
 	if not R.json_compatible(input):
 		return R.fail("INVALID_QUANTITY" if input.has("quantity") and not R.json_compatible(input.quantity) else "INVALID_INPUT")
+	if input.get("type") == "SubmitPlayerPrompt": return _submit_player_prompt(input, is_privileged)
 	_input_sequence += 1
 	context = {"input_id": "input:%010d" % _input_sequence, "actor_entity_id": input.get("actor_entity_id"), "privileged": is_privileged}
 	var record := {"schema_version": Definition.SCHEMA_VERSION, "input_id": context.input_id, "tick_index": world.clock().tick_index, "privileged": is_privileged, "command": input.duplicate(true)}

@@ -92,3 +92,7 @@ Project0.2.4/schema2B.5 integrates the accepted command/logistics systems for25s
 ## Step109: qualitative player observation boundary
 
 Project0.3.0/schema2C.1 adds configured StrategicAreas and a detached qualitative PlayerObserverView. A separate persisted observation stream leaves authoritative events and IDs byte-identical with observation enabled/disabled. Player visibility never updates command knowledge or AI. Run -Mode observer -TimeoutSeconds150, then -Mode replay -Package res://artifacts/run_step109_A. See [boundary, replay contract and evidence](docs/PLAYER_OBSERVATION_109.md) and [approved event split](docs/AMENDMENT_109.md). No player commands or strategic UI yet.
+
+## 110 — Nonbinding player prompts
+
+Project0.3.1/schema2C.2. DIRECT_ATTENTION and REQUEST_ASSESSMENT target validated StrategicAreas and enabled Operational Commands. Prompts end at PENDING_EVALUATION; no AI policy consumes them. Independent prompt input/event identities leave the authoritative world and observer stream unchanged. Export includes strict integrity-checked prompt history and recipient views. See docs/PLAYER_PROMPTS_110.md, REQUIREMENTS_110.md and approved AMENDMENT_110.md. Run tools/run.ps1 -Mode prompts -TimeoutSeconds 180; full acceptance -Mode test -TimeoutSeconds 300. Headless startup safeguards remain. Stop at110 review; no111.

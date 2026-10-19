@@ -7,6 +7,7 @@ const ExactJSON = preload("res://kernel/authoritative_json.gd")
 const Areas = preload("res://kernel/strategic_area_definition.gd")
 const Observer = preload("res://kernel/player_observer.gd")
 const World = preload("res://kernel/world_state.gd")
+const Prompts = preload("res://kernel/player_prompt_service.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -64,8 +65,19 @@ static func export_run(sim: RefCounted, directory: String) -> Dictionary:
 		manifest.streams = {"authoritative": {"file": "events.jsonl", "schema_version": Definition.SCHEMA_VERSION, "sha256": FileAccess.get_sha256(directory.path_join("events.jsonl"))}, "player_observation": {"file": "player_observation_events.jsonl", "schema_version": "2C.1.player-observation.1", "sha256": FileAccess.get_sha256(directory.path_join("player_observation_events.jsonl"))}}
 		manifest.observer_configuration_sha256 = FileAccess.get_sha256(directory.path_join("player_observer_config.json"))
 		manifest.observer_projection_sha256 = FileAccess.get_sha256(directory.path_join("final_player_observer.json"))
+	# Empty intent streams are explicit too; no synthetic prompt is generated.
+	for pair in [["player_prompt_events.jsonl", sim.player_prompts.events(), true], ["final_player_prompts.json", prompt_projection(sim), false]]:
+		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
+	manifest.player_prompts_enabled = true
+	manifest.player_prompt = {"schema_version": Prompts.SCHEMA, "file": "player_prompt_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_events.jsonl")), "projection_file": "final_player_prompts.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_player_prompts.json")), "inputs_sha256": FileAccess.get_sha256(directory.path_join("inputs.jsonl"))}
 	if not write_json(directory.path_join("manifest.json"), manifest): return R.fail("EXPORT_FAILED", {"file": "manifest.json"})
 	return R.ok(null, {"directory": directory})
+
+static func prompt_projection(sim: RefCounted) -> Dictionary:
+	var recipients: Dictionary = {}
+	for id in sim.world.ids("commands"):
+		if sim.world.get_command(id).command_level == "OPERATIONAL": recipients[id] = sim.command_prompt_view(id).snapshot()
+	return {"state": sim.player_prompts.snapshot(), "view": sim.player_prompt_view().snapshot(), "recipients": recipients}
 
 static func read_json(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -126,6 +138,15 @@ static func replay_package(directory: String) -> Dictionary:
 	if manifest.get("schema_version") != Definition.SCHEMA_VERSION or manifest.get("project_version") != Definition.PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
 	if not manifest.get("player_observation_enabled") is bool: return R.fail("INVALID_OBSERVER_PACKAGE")
+	if manifest.get("player_prompts_enabled") != true or not manifest.get("player_prompt") is Dictionary: return R.fail("INVALID_PROMPT_PACKAGE")
+	var prompt_manifest: Dictionary = manifest.player_prompt
+	if prompt_manifest.get("schema_version") != Prompts.SCHEMA or prompt_manifest.get("file") != "player_prompt_events.jsonl" or prompt_manifest.get("projection_file") != "final_player_prompts.json": return R.fail("INVALID_PROMPT_PACKAGE")
+	for pair in [["player_prompt_events.jsonl", "sha256"], ["final_player_prompts.json", "projection_sha256"], ["inputs.jsonl", "inputs_sha256"]]:
+		if prompt_manifest.get(pair[1]) != FileAccess.get_sha256(directory.path_join(pair[0])): return R.fail("PROMPT_PACKAGE_HASH_MISMATCH")
+	for filename in ["player_prompt_events.jsonl", "final_player_prompts.json"]:
+		var result := read_lines(directory.path_join(filename)) if filename.ends_with("jsonl") else read_json(directory.path_join(filename))
+		if not result.success: return result
+		loaded[filename] = result.details.value
 	var configuration: Array = []
 	if manifest.player_observation_enabled:
 		for filename in ["player_observer_config.json", "player_observation_events.jsonl", "final_player_observer.json"]:
@@ -147,6 +168,12 @@ static func replay_package(directory: String) -> Dictionary:
 	if not replayed.success:
 		return replayed
 	var sim: RefCounted = replayed.details.simulation
+	if not observer_equivalent(sim.inputs, loaded["inputs.jsonl"]): return R.fail("PROMPT_INPUT_HISTORY_MISMATCH")
+	if not observer_equivalent(sim.player_prompts.events(), loaded["player_prompt_events.jsonl"]) or not observer_equivalent(prompt_projection(sim), loaded["final_player_prompts.json"]): return R.fail("PLAYER_PROMPT_REPLAY_MISMATCH")
+	var rebuilt := Prompts.new()
+	for event in loaded["player_prompt_events.jsonl"]:
+		if not rebuilt.apply_event(event).success: return R.fail("INVALID_PROMPT_EVENT")
+	if not observer_equivalent(rebuilt.snapshot(), sim.player_prompts.snapshot()) or not observer_equivalent(rebuilt.view().snapshot(), sim.player_prompt_view().snapshot()): return R.fail("PLAYER_PROMPT_RECONSTRUCTION_MISMATCH")
 	var state_match := equivalent(sim.snapshot(), loaded["final_world.json"])
 	var events_match := equivalent(sim.events.all(), loaded["events.jsonl"])
 	if not state_match or not events_match:
@@ -157,6 +184,10 @@ static func replay_package(directory: String) -> Dictionary:
 				return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "first_event_index": index, "actual_normalized": JSON.stringify(normalize(actual_events[index]), "", true, true), "expected_normalized": JSON.stringify(normalize(expected_events[index]), "", true, true)})
 		return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "actual_event_count": actual_events.size(), "expected_event_count": expected_events.size()})
 	var details := {"state_match": true, "events_match": true, "event_count": sim.events.count(), "end_tick": manifest.end_tick}
+	details.prompt_events_match = true
+	details.prompt_projection_match = true
+	details.prompt_inputs_match = true
+	details.prompt_event_count = sim.player_prompts.events().size()
 	if manifest.player_observation_enabled:
 		var observed := {"state": sim.player_observer.snapshot(), "view": sim.player_view().snapshot()}
 		if not observer_equivalent(sim.player_observer.events(), loaded["player_observation_events.jsonl"]) or not observer_equivalent(observed, loaded["final_player_observer.json"]): return R.fail("PLAYER_OBSERVATION_REPLAY_MISMATCH")
