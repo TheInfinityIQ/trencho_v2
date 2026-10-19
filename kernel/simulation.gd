@@ -12,6 +12,7 @@ const Hierarchy = preload("res://kernel/hierarchy_service.gd")
 const Communication = preload("res://kernel/communication_service.gd")
 const Information = preload("res://kernel/information_service.gd")
 const View = preload("res://kernel/command_view.gd")
+const Fronts = preload("res://kernel/front_service.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -36,7 +37,9 @@ func initialize_snapshot(snapshot: Dictionary) -> Dictionary:
 	if not validation.success:
 		return validation
 	initial_world = snapshot.duplicate(true)
-	world = World.new(snapshot)
+	# Restore the new fixed-point front fields to integer types after JSON parsing.
+	initial_world.fronts = validation.details.fronts.duplicate(true)
+	world = World.new(initial_world)
 	events = Store.new()
 	inputs = []
 	_input_sequence = 0
@@ -48,6 +51,8 @@ func initialize_snapshot(snapshot: Dictionary) -> Dictionary:
 	for pair in [["locations", "LOCATION_CREATED"], ["commands", "COMMAND_CREATED"], ["resource_types", "RESOURCE_TYPE_DEFINED"], ["stockpiles", "STOCKPILE_CREATED"], ["logistics_edges", "LOGISTICS_EDGE_CREATED"], ["communication_edges", "COMMUNICATION_EDGE_CREATED"]]:
 		for id in world.ids(pair[0]):
 			commit(pair[1], [{"table": pair[0], "id": id, "value": world.get_entity(pair[0], id)}], {"initial_definition": true}, id)
+	for id in world.ids("fronts"):
+		commit("FRONT_CREATED", [{"table": "fronts", "id": id, "value": world.get_front(id)}], {"initial_definition": true}, id)
 	return R.ok()
 
 func actor() -> Variant:
@@ -84,7 +89,7 @@ func commit(type: String, changes: Array, payload: Dictionary = {}, subject: Var
 	var event_clock: Dictionary = changes[0].value if type == "TICK_ADVANCED" else world.clock()
 	var correlation: Variant = operation_correlation if operation_correlation != null else context.get("input_id", world.correlation(subject) if subject is String else null)
 	var causation: Variant = cause if cause != null else context.get("causation_event_id", world.last_event(subject) if subject is String else null)
-	var event := {"event_id": id, "event_type": type, "schema_version": "2A.1", "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
+	var event := {"event_id": id, "event_type": type, "schema_version": Definition.SCHEMA_VERSION, "run_id": initial_world.run_id, "tick_index": event_clock.tick_index, "simulation_time": event_clock.simulation_time_seconds, "actor_entity_id": actor(), "subject_entity_id": subject, "location_id": subject_location, "correlation_id": correlation, "causation_event_id": causation, "payload": body}
 	world.apply_event(event)
 	events.append(event)
 	return id
@@ -98,7 +103,7 @@ func execute(input: Dictionary, is_privileged := false) -> Dictionary:
 		return R.fail("INVALID_QUANTITY" if input.has("quantity") and not R.json_compatible(input.quantity) else "INVALID_INPUT")
 	_input_sequence += 1
 	context = {"input_id": "input:%010d" % _input_sequence, "actor_entity_id": input.get("actor_entity_id"), "privileged": is_privileged}
-	var record := {"schema_version": "2A.1", "input_id": context.input_id, "tick_index": world.clock().tick_index, "privileged": is_privileged, "command": input.duplicate(true)}
+	var record := {"schema_version": Definition.SCHEMA_VERSION, "input_id": context.input_id, "tick_index": world.clock().tick_index, "privileged": is_privileged, "command": input.duplicate(true)}
 	var received := commit("INPUT_RECEIVED", [{"table": "run", "id": "run", "value": {"input_sequence": _input_sequence}}], {"command": input})
 	context.causation_event_id = received
 	var validation := _validate_input(input)
@@ -113,13 +118,13 @@ func _validate_input(input: Dictionary) -> Dictionary:
 		"CreateResource": ["stockpile_id", "resource_type_id", "quantity"], "ConsumeResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"], "DestroyResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"],
 		"ReserveResource": ["stockpile_id", "resource_type_id", "quantity"], "ReleaseReservation": ["reservation_id"], "ConsumeReservation": ["reservation_id"], "InvalidateReservation": ["reservation_id"],
 		"CreateShipment": ["origin_stockpile_id", "destination_stockpile_id", "resource_type_id", "quantity"], "DispatchShipment": ["shipment_id"], "CancelShipment": ["shipment_id"], "RerouteShipment": ["shipment_id", "destination_stockpile_id"], "DestroyShipment": ["shipment_id", "reason_code"],
-		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "EndRun": []}
+		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "CreateFront": ["front"], "SetFrontEnemyPressure": ["front_id", "value"], "SetFrontFriendlyStrength": ["front_id", "value"], "SetFrontPosture": ["front_id", "value"], "SetFrontEnabled": ["front_id", "value"], "EndRun": []}
 	if not input.get("type") is String or not required.has(input.type):
 		return R.fail("INVALID_INPUT")
 	for key in required[input.type]:
 		if not input.has(key):
 			return R.fail("INVALID_INPUT", {"missing": key})
-		if key in ["quantity", "payload", "fact", "enabled", "superior_command_id"]:
+		if key in ["quantity", "payload", "fact", "front", "value", "enabled", "superior_command_id"]:
 			continue
 		if not input[key] is String or input[key].is_empty():
 			return R.fail("INVALID_INPUT", {"field": key})
@@ -127,7 +132,7 @@ func _validate_input(input: Dictionary) -> Dictionary:
 		return R.fail("INVALID_INPUT")
 	if input.has("purpose_code") and not input.purpose_code is String:
 		return R.fail("INVALID_INPUT")
-	for key in ["payload", "fact"]:
+	for key in ["payload", "fact", "front"]:
 		if input.has(key) and not input[key] is Dictionary:
 			return R.fail("INVALID_INPUT")
 	if input.has("enabled") and not input.enabled is bool:
@@ -138,6 +143,11 @@ func _validate_input(input: Dictionary) -> Dictionary:
 
 func _execute(i: Dictionary) -> Dictionary:
 	match i.type:
+		"CreateFront":
+			return Fronts.new(self).create(i.front)
+		"SetFrontEnemyPressure", "SetFrontFriendlyStrength", "SetFrontPosture", "SetFrontEnabled":
+			var fields := {"SetFrontEnemyPressure": "enemy_pressure", "SetFrontFriendlyStrength": "friendly_strength", "SetFrontPosture": "posture", "SetFrontEnabled": "enabled"}
+			return Fronts.new(self).set_field(i.front_id, fields[i.type], i.value)
 		"CreateResource":
 			return Resources.new(self).create_stock(i.resource_type_id, i.stockpile_id, i.quantity)
 		"ConsumeResource", "DestroyResource":
@@ -197,9 +207,13 @@ func advance(ticks: int = 1) -> Dictionary:
 		clock.tick_index += 1
 		clock.simulation_time_seconds = Clock.seconds(clock.tick_index, clock.tick_duration)
 		# The tick event is timestamped at its new time, matching all subsequent updates.
-		commit("TICK_ADVANCED", [{"table": "clock", "id": "clock", "value": clock}])
+		var prepared: Dictionary = Fronts.new(self).prepare_tick(clock.tick_duration)
+		var tick_changes: Array = [{"table": "clock", "id": "clock", "value": clock}]
+		tick_changes.append_array(prepared.changes)
+		var tick_event := commit("TICK_ADVANCED", tick_changes, {"front_integer_demands": prepared.demands} if not prepared.demands.is_empty() else {})
 		Logistics.new(self).step()
 		Communication.new(self).step()
+		Fronts.new(self).resolve_tick(prepared.demands, tick_event)
 	return R.ok()
 
 func command_view(id: String) -> RefCounted:
@@ -228,3 +242,6 @@ func snapshot() -> Dictionary:
 
 func audit() -> Dictionary:
 	return Resources.new(self).audit()
+
+func front_metrics(id: String) -> Dictionary:
+	return Fronts.new(self).metrics(id)

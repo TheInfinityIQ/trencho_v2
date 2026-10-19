@@ -1,0 +1,23 @@
+{
+  "id": "trencho_step103_front_v1",
+  "tick_duration": 0.1,
+  "resource_types": [{"id": "AMMUNITION", "display_name": "Ammunition", "unit_name": "ammo", "allow_fractional_quantity": false}],
+  "locations": [
+    {"id": "ARMY_HQ", "location_type": "HQ"},
+    {"id": "DEPOT_A", "location_type": "COMMAND_SITE"},
+    {"id": "DEPOT_B", "location_type": "COMMAND_SITE"}
+  ],
+  "commands": [
+    {"id": "ARMY_COMMAND", "command_level": "OPERATIONAL", "directly_controlled_location_ids": ["ARMY_HQ"], "directly_controlled_stockpile_ids": ["HQ_STOCK"]},
+    {"id": "LOCAL_A", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_A"], "directly_controlled_stockpile_ids": ["A_STOCK"]},
+    {"id": "LOCAL_B", "superior_command_id": "ARMY_COMMAND", "directly_controlled_location_ids": ["DEPOT_B"], "directly_controlled_stockpile_ids": ["B_STOCK"]}
+  ],
+  "stockpiles": [
+    {"id": "HQ_STOCK", "location_id": "ARMY_HQ", "owner_command_id": "ARMY_COMMAND"},
+    {"id": "A_STOCK", "location_id": "DEPOT_A", "owner_command_id": "LOCAL_A", "quantities": {"AMMUNITION": 10}},
+    {"id": "B_STOCK", "location_id": "DEPOT_B", "owner_command_id": "LOCAL_B"}
+  ],
+  "fronts": [
+    {"id": "FRONT_A", "display_name": "Front A", "location_id": "DEPOT_A", "responsible_command_id": "LOCAL_A", "supply_stockpile_id": "A_STOCK", "friendly_strength": 60, "enemy_pressure": 50, "posture": "HOLD", "base_ammo_demand_per_second": 8}
+  ]
+}

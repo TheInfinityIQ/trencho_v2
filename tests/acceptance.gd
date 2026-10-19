@@ -9,6 +9,7 @@ const Information = preload("res://kernel/information_service.gd")
 const World = preload("res://kernel/world_state.gd")
 const Closeout = preload("res://tests/closeout_cases.gd")
 const Definition = preload("res://kernel/world_definition.gd")
+const FrontCases = preload("res://tests/front_cases.gd")
 var checks: Array = []
 var failures: Array = []
 
@@ -78,9 +79,12 @@ func _initialize() -> void:
 	var closeout: Dictionary = Closeout.run()
 	for item in closeout.checks:
 		check(item.passed, item.name)
-	var report := {"schema_version": "2A.1", "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
+	var fronts: Dictionary = FrontCases.run()
+	for item in fronts.checks:
+		check(item.passed, item.name)
+	var report := {"schema_version": Definition.SCHEMA_VERSION, "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
 	Exporter.write_json("res://artifacts/acceptance_results.json", report)
-	print("TRENCHO 2A ACCEPTANCE: %d checks, %d failed" % [checks.size(), failures.size()])
+	print("TRENCHO ACCEPTANCE: %d checks, %d failed" % [checks.size(), failures.size()])
 	quit(0 if failures.is_empty() else 1)
 
 func _test_resources() -> void:

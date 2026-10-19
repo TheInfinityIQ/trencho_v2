@@ -2,14 +2,16 @@ extends RefCounted
 
 const R = preload("res://kernel/result.gd")
 const Clock = preload("res://kernel/clock.gd")
-const PROJECT_VERSION = "0.1.1"
+const Front = preload("res://kernel/front_definition.gd")
+const PROJECT_VERSION = "0.2.0"
+const SCHEMA_VERSION = "2B.1"
 
 static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dictionary:
 	if not R.json_compatible(data) or not R.json_compatible(seed):
 		return R.fail("INVALID_WORLD_DEFINITION", {"reason": "NON_JSON_VALUE"})
 	if not data.get("id", "") is String or not data.get("public_facts", {}) is Dictionary:
 		return R.fail("INVALID_WORLD_DEFINITION")
-	var state := {"schema_version": "2A.1", "project_version": PROJECT_VERSION, "run_id": run_id, "simulation_seed": seed, "engine_version": Engine.get_version_info().string, "initial_world_definition_id": data.get("id", ""), "event_sequence": 0, "input_sequence": 0, "ended": false, "clock": {"tick_index": 0, "tick_duration": data.get("tick_duration", 0.1), "simulation_time_seconds": 0.0}, "public_facts": data.get("public_facts", {}).duplicate(true)}
+	var state := {"schema_version": SCHEMA_VERSION, "project_version": PROJECT_VERSION, "run_id": run_id, "simulation_seed": seed, "engine_version": Engine.get_version_info().string, "initial_world_definition_id": data.get("id", ""), "event_sequence": 0, "input_sequence": 0, "ended": false, "clock": {"tick_index": 0, "tick_duration": data.get("tick_duration", 0.1), "simulation_time_seconds": 0.0}, "public_facts": data.get("public_facts", {}).duplicate(true)}
 	if state.initial_world_definition_id.is_empty() or not (state.clock.tick_duration is float or state.clock.tick_duration is int) or not is_finite(float(state.clock.tick_duration)) or Clock.units(state.clock.tick_duration) <= 0:
 		return R.fail("INVALID_WORLD_DEFINITION")
 	state.clock.tick_duration = Clock.units(state.clock.tick_duration) / 1000000.0
@@ -118,16 +120,34 @@ static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dict
 			return R.fail("INVALID_WORLD_DEFINITION", {"reason": "OWNER_AUTHORITY_MISMATCH", "stockpile_id": id})
 	for id in state.commands:
 		state.commands[id].subordinate_command_ids.sort()
+	state.fronts = {}
+	if not data.get("fronts", []) is Array:
+		return R.fail("INVALID_WORLD_DEFINITION")
+	for data_front in data.get("fronts", []):
+		if not Front.tick_compatible(state.clock.tick_duration):
+			return R.fail("INVALID_FRONT", {"reason": "UNSUPPORTED_FRONT_TICK_DURATION"})
+		if not data_front is Dictionary:
+			return R.fail("INVALID_WORLD_DEFINITION")
+		for key in ["id", "responsible_command_id", "location_id", "supply_stockpile_id"]:
+			if not data_front.get(key) is String:
+				return R.fail("INVALID_WORLD_DEFINITION")
+		if used.has(data_front.id) or ":" in data_front.id or not state.resource_types.has("AMMUNITION") or state.resource_types.AMMUNITION.allow_fractional_quantity:
+			return R.fail("INVALID_WORLD_DEFINITION")
+		var result: Dictionary = Front.make(data_front, state.commands.get(data_front.responsible_command_id, {}), state.locations.get(data_front.location_id, {}), state.stockpiles.get(data_front.supply_stockpile_id, {}), 0.0)
+		if not result.success:
+			return result
+		state.fronts[data_front.id] = result.details.front
+		used[data_front.id] = true
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	state.rng_state = str(rng.state)
 	return R.ok(null, {"snapshot": state})
 
 static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
-	for key in ["schema_version", "project_version", "engine_version", "run_id", "simulation_seed", "initial_world_definition_id", "event_sequence", "input_sequence", "clock", "rng_state", "ended", "public_facts", "locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "messages", "resource_reservations", "information_records", "ledger"]:
+	for key in ["schema_version", "project_version", "engine_version", "run_id", "simulation_seed", "initial_world_definition_id", "event_sequence", "input_sequence", "clock", "rng_state", "ended", "public_facts", "locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "messages", "resource_reservations", "information_records", "ledger", "fronts"]:
 		if not snapshot.has(key):
 			return R.fail("INVALID_SNAPSHOT", {"missing": key})
-	if snapshot.schema_version != "2A.1" or snapshot.project_version != PROJECT_VERSION:
+	if snapshot.schema_version != SCHEMA_VERSION or snapshot.project_version != PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
 	if snapshot.engine_version != Engine.get_version_info().string:
 		return R.fail("ENGINE_VERSION_MISMATCH")
@@ -136,7 +156,7 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 	if not snapshot.rng_state is String or not snapshot.rng_state.is_valid_int() or not snapshot.run_id is String or not (snapshot.simulation_seed is int or snapshot.simulation_seed is float):
 		return R.fail("INVALID_SNAPSHOT", {"reason": "INVALID_RUN_IDENTITY", "rng_state": snapshot.rng_state})
 	var definition := {"id": snapshot.initial_world_definition_id, "tick_duration": snapshot.clock.get("tick_duration", 0), "public_facts": snapshot.public_facts}
-	for table in ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges"]:
+	for table in ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "fronts"]:
 		if not snapshot[table] is Dictionary:
 			return R.fail("INVALID_SNAPSHOT")
 		definition[table] = snapshot[table].values()
@@ -152,7 +172,7 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 	# Compare canonical semantic data; JSON parses integral numbers as floats.
 	if not _same(result.details.snapshot, snapshot):
 		return R.fail("INVALID_SNAPSHOT", {"reason": "INCONSISTENT_INITIAL_PROJECTION"})
-	return R.ok()
+	return R.ok(null, {"fronts": result.details.snapshot.fronts})
 
 static func _same(a: Variant, b: Variant) -> bool:
 	if a is Dictionary and b is Dictionary:

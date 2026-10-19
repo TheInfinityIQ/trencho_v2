@@ -3,6 +3,7 @@ extends RefCounted
 const R = preload("res://kernel/result.gd")
 const Simulation = preload("res://kernel/simulation.gd")
 const Definition = preload("res://kernel/world_definition.gd")
+const ExactJSON = preload("res://kernel/authoritative_json.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -53,11 +54,12 @@ static func read_json(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return R.fail("IMPORT_FAILED", {"path": path})
-	var parser := JSON.new()
-	var error := parser.parse(file.get_as_text())
-	if error != OK or not parser.data is Dictionary:
+	var parsed := ExactJSON.parse(file.get_as_text())
+	if not parsed.success:
+		return R.fail(parsed.error_code, {"path": path, "offset": parsed.details.offset})
+	if not parsed.details.value is Dictionary:
 		return R.fail("IMPORT_FAILED", {"path": path})
-	return R.ok(null, {"value": parser.data})
+	return parsed
 
 static func read_lines(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -68,10 +70,12 @@ static func read_lines(path: String) -> Dictionary:
 		var line := file.get_line()
 		if line.strip_edges().is_empty():
 			continue
-		var parser := JSON.new()
-		if parser.parse(line) != OK or not parser.data is Dictionary:
+		var parsed := ExactJSON.parse(line)
+		if not parsed.success:
+			return R.fail(parsed.error_code, {"path": path, "offset": parsed.details.offset})
+		if not parsed.details.value is Dictionary:
 			return R.fail("IMPORT_FAILED", {"path": path})
-		result.append(parser.data)
+		result.append(parsed.details.value)
 	return R.ok(null, {"value": result})
 
 static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int) -> Dictionary:
@@ -80,7 +84,7 @@ static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int) -
 	if not initialized.success:
 		return initialized
 	for record in recorded_inputs:
-		if record.get("schema_version") != "2A.1" or not record.get("command") is Dictionary or not record.get("privileged") is bool or record.get("tick_index", -1) < sim.world.clock().tick_index or record.tick_index > end_tick:
+		if record.get("schema_version") != Definition.SCHEMA_VERSION or not record.get("command") is Dictionary or not record.get("privileged") is bool or record.get("tick_index", -1) < sim.world.clock().tick_index or record.tick_index > end_tick:
 			return R.fail("INVALID_REPLAY_INPUT")
 		var advance: Dictionary = sim.advance(record.tick_index - sim.world.clock().tick_index)
 		if not advance.success:
@@ -102,7 +106,7 @@ static func replay_package(directory: String) -> Dictionary:
 			return result
 		loaded[filename] = result.details.value
 	var manifest: Dictionary = loaded["manifest.json"]
-	if manifest.get("schema_version") != "2A.1" or manifest.get("project_version") != Definition.PROJECT_VERSION:
+	if manifest.get("schema_version") != Definition.SCHEMA_VERSION or manifest.get("project_version") != Definition.PROJECT_VERSION:
 		return R.fail("UNSUPPORTED_SNAPSHOT")
 	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick)
 	if not replayed.success:
@@ -111,5 +115,10 @@ static func replay_package(directory: String) -> Dictionary:
 	var state_match := equivalent(sim.snapshot(), loaded["final_world.json"])
 	var events_match := equivalent(sim.events.all(), loaded["events.jsonl"])
 	if not state_match or not events_match:
-		return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match})
+		var actual_events: Array = sim.events.all()
+		var expected_events: Array = loaded["events.jsonl"]
+		for index in range(mini(actual_events.size(), expected_events.size())):
+			if not equivalent(actual_events[index], expected_events[index]):
+				return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "first_event_index": index, "actual_normalized": JSON.stringify(normalize(actual_events[index]), "", true, true), "expected_normalized": JSON.stringify(normalize(expected_events[index]), "", true, true)})
+		return R.fail("REPLAY_MISMATCH", {"state_match": state_match, "events_match": events_match, "actual_event_count": actual_events.size(), "expected_event_count": expected_events.size()})
 	return R.ok(null, {"state_match": true, "events_match": true, "event_count": sim.events.count(), "end_tick": manifest.end_tick})

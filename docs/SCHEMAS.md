@@ -1,4 +1,6 @@
-# Diagnostic schemas — 2A.1 / project 0.1.1
+# Diagnostic schemas — 2B.1 / project 0.2.0
+
+Step 103 adds the fronts registry with canonical integer fixed-point fields and private front observations; see FRONTS_103.md for field and belief units. Current replay requires schema2B.1/project0.2.0. The following closeout notes describe the preserved 2A baseline.
 
 The closeout adds communication diagnostics and repairs correlation metadata without changing physical simulation semantics. These additive envelope/payload fields retain schema `2A.1`; the simulation project version is bumped to `0.1.1` because normalized event output differs from `0.1.0`. Older packages remain inspectable data and can be replayed with their original source revision; the closeout loader explicitly rejects their older project version rather than silently changing their replay output.
 
@@ -19,7 +21,7 @@ run_<run_id>/
 
 Both world files contain all registries as objects keyed by stable entity ID:
 
-`locations`, `commands`, `resource_types`, `stockpiles`, `logistics_edges`, `communication_edges`, `resource_reservations`, `shipments`, `messages`, `information_records`, `ledger`.
+`locations`, `commands`, `resource_types`, `stockpiles`, `logistics_edges`, `communication_edges`, `resource_reservations`, `shipments`, `messages`, `information_records`, `ledger`, `fronts`.
 
 They also contain `schema_version`, `project_version`, `engine_version`, `run_id`, `simulation_seed`, `initial_world_definition_id`, `event_sequence`, `input_sequence`, `ended`, `rng_state`, `public_facts`, and `clock`.
 
@@ -121,3 +123,8 @@ All external simulation actions return `{success, error_code, entity_id, details
 Normalization recursively sorts dictionary keys, leaves arrays in order, canonicalizes integral floats within JSON's exact integer range, and omits diagnostic `run_id`. It preserves seed, schema, project/engine version, timestamps in logical time, provenance, IDs, all entity contents and event order. Wall-clock start time occurs only in the manifest, which is not part of the deterministic event/state comparison.
 
 Replay validates the initial world, applies external commands at their original ticks and in file order, and checks each result before comparing final state and the complete event stream. It does not inject recorded authoritative events while re-simulating, so an incorrect service result cannot be hidden by loading the expected events. Independent event-only projection reconstruction is tested separately.
+
+
+## 2B.1 front and import additions
+
+Snapshots add fronts, including integer centi-strength/pressure, milli-ammo base rate, micro-ammo accumulator, microsecond observation deadlines and integer interval counters. Front belief values follow the canonical unit table in FRONTS_103.md; coverage has both milliseconds and a FINITE/ZERO_DEMAND/OUT_OF_RANGE status fact. Each sample now emits nine facts. Run artifact imports preserve exact integer number tokens within +/-9007199254740991 and explicitly reject unsupported integer tokens. Decimal/exponent interpretation and string values retain their existing behavior. The external JSON format and strict comparison are unchanged.

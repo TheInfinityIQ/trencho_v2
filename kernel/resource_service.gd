@@ -70,12 +70,31 @@ func remove_stock(stockpile_id: String, resource: String, quantity: Variant, act
 		return R.fail("UNAUTHORIZED")
 	if quantity > available(s, resource):
 		return R.fail("INSUFFICIENT_AVAILABLE_STOCK")
+	return _remove_validated(s, resource, quantity, reason, destroy)
+
+# Internal simulation capability: assignment permits consumption, never dispatch or allocation.
+func consume_for_front(front_id: String, quantity: int) -> Dictionary:
+	var front: Dictionary = world.get_front(front_id)
+	if front.is_empty() or not front.enabled:
+		return R.fail("INVALID_ENTITY")
+	if sim.context.get("source_system") != "FRONT_SIMULATION" or sim.actor() != front_id:
+		return R.fail("UNAUTHORIZED")
+	if not quantity_valid("AMMUNITION", quantity):
+		return R.fail("INVALID_QUANTITY")
+	var s := enabled_stockpile(front.supply_stockpile_id)
+	if s.is_empty():
+		return R.fail("INVALID_ENTITY")
+	if quantity > available(s, "AMMUNITION"):
+		return R.fail("INSUFFICIENT_AVAILABLE_STOCK")
+	return _remove_validated(s, "AMMUNITION", quantity, "FRONT_COMBAT_CONSUMPTION", false)
+
+func _remove_validated(s: Dictionary, resource: String, quantity: Variant, reason: String, destroy: bool) -> Dictionary:
 	s.quantities[resource] -= quantity
 	var l := ledger(resource)
 	var field := "destroyed" if destroy else "consumed"
 	l[field] += quantity
-	sim.commit("RESOURCE_DESTROYED" if destroy else "RESOURCE_CONSUMED", [change("stockpiles", s), change("ledger", l)], {"reason_code": reason, "quantity": quantity, "resource_type_id": resource}, stockpile_id)
-	return R.ok(stockpile_id)
+	sim.commit("RESOURCE_DESTROYED" if destroy else "RESOURCE_CONSUMED", [change("stockpiles", s), change("ledger", l)], {"reason_code": reason, "quantity": quantity, "resource_type_id": resource}, s.id)
+	return R.ok(s.id)
 
 func audit() -> Dictionary:
 	var result: Dictionary = {}

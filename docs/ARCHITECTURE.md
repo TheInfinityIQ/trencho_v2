@@ -69,3 +69,7 @@ Godot 4.7 documentation was checked while implementing, and behavior was execute
 * [JSON parsing/stringification](https://docs.godotengine.org/en/4.7/classes/class_json.html)
 * [Seeded RandomNumberGenerator and state](https://docs.godotengine.org/en/4.7/classes/class_randomnumbergenerator.html)
 * [User/project paths and portable editor data](https://docs.godotengine.org/en/4.7/tutorials/io/data_paths.html)
+
+## Step 103 extension
+
+FrontDefinition and FrontService implement abstract front state, deterministic fixed-point demand and local sampling. TICK_ADVANCED carries prepared front accumulator patches; logistics/messages resolve before front consumption/interval finalization. ResourceService retains stock ownership. InformationService retains belief ownership. The front state never enters CommandView. See FRONTS_103.md for integer units, event sequence, tick precision, schema change and review boundary.

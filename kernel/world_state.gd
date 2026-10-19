@@ -1,6 +1,6 @@
 extends RefCounted
 
-const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger"]
+const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger", "fronts"]
 var _state: Dictionary = {}
 var _outgoing: Dictionary = {}
 var _stock_location: Dictionary = {}
@@ -9,7 +9,7 @@ var _beliefs: Dictionary = {}
 var _information_owner: Dictionary = {}
 var _inboxes: Dictionary = {}
 var _reservation_shipment: Dictionary = {}
-var _active: Dictionary = {"shipments": {}, "messages": {}}
+var _active: Dictionary = {"shipments": {}, "messages": {}, "fronts": {}}
 var _last_events: Dictionary = {}
 var _correlations: Dictionary = {}
 
@@ -37,6 +37,15 @@ func get_stockpile(id: String) -> Dictionary:
 
 func get_shipment(id: String) -> Dictionary:
 	return get_entity("shipments", id)
+
+func get_front(id: String) -> Dictionary:
+	return get_entity("fronts", id)
+
+func has_id(id: String) -> bool:
+	for table in TABLES:
+		if _state[table].has(id):
+			return true
+	return false
 
 func ids(table: String) -> Array:
 	var result: Array = _state.get(table, {}).keys()
@@ -147,6 +156,10 @@ func _index_entity(table: String, entity: Dictionary, remove := false) -> void:
 			_active.messages.erase(id)
 			if not remove and entity.state == "IN_TRANSIT":
 				_active.messages[id] = true
+		"fronts":
+			_active.fronts.erase(id)
+			if not remove and entity.enabled:
+				_active.fronts[id] = true
 
 func _reindex() -> void:
 	_outgoing.clear()
@@ -156,7 +169,7 @@ func _reindex() -> void:
 	_information_owner.clear()
 	_inboxes.clear()
 	_reservation_shipment.clear()
-	_active = {"shipments": {}, "messages": {}}
+	_active = {"shipments": {}, "messages": {}, "fronts": {}}
 	for table in TABLES:
 		for id in ids(table):
 			_index_entity(table, _state[table][id])
