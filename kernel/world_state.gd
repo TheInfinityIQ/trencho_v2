@@ -1,6 +1,6 @@
 extends RefCounted
 
-const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger", "fronts"]
+const TABLES = ["locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "resource_reservations", "messages", "information_records", "ledger", "fronts", "observation_batches", "decisions", "decision_candidates"]
 var _state: Dictionary = {}
 var _outgoing: Dictionary = {}
 var _stock_location: Dictionary = {}
@@ -173,4 +173,3 @@ func _reindex() -> void:
 	for table in TABLES:
 		for id in ids(table):
 			_index_entity(table, _state[table][id])
-

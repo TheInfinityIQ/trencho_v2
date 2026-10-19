@@ -4,6 +4,8 @@ const Definition = preload("res://kernel/front_definition.gd")
 const Clock = preload("res://kernel/clock.gd")
 const Resources = preload("res://kernel/resource_service.gd")
 const Information = preload("res://kernel/information_service.gd")
+const Authority = preload("res://kernel/authority_service.gd")
+const Journal = preload("res://kernel/decision_journal.gd")
 
 func create(data: Dictionary) -> Dictionary:
 	if not sim.privileged():
@@ -28,7 +30,11 @@ func create(data: Dictionary) -> Dictionary:
 
 func set_field(id: String, field: String, value: Variant) -> Dictionary:
 	if not sim.privileged():
-		return R.fail("UNAUTHORIZED")
+		if field != "posture" or not sim.actor() is String or not Authority.new(sim).can_set_front_posture(sim.actor(), id):
+			return R.fail("UNAUTHORIZED")
+		var decision: Dictionary = world.get_entity("decisions", sim.context.get("decision_id", ""))
+		if sim.context.get("source_system") != "AUTONOMOUS_COMMAND_DECISION" or decision.is_empty() or decision.command_id != sim.actor() or decision.front_id != id or decision.selected_action != value or decision.state != "SELECTED":
+			return R.fail("UNAUTHORIZED")
 	var front: Dictionary = world.get_front(id)
 	if front.is_empty():
 		return R.fail("INVALID_ENTITY")
@@ -47,8 +53,16 @@ func set_field(id: String, field: String, value: Variant) -> Dictionary:
 	var event_type: String = types.get(field.trim_suffix("_centi"))
 	var previous: Variant = front[field]
 	front[field] = value
-	sim.commit(event_type, [change("fronts", front)], {"previous": previous, "value": value}, id)
-	return R.ok(id)
+	if not sim.privileged() and previous == value:
+		return R.ok(id, {"changed": false})
+	var payload := {"previous": previous, "value": value}
+	if not sim.privileged():
+		payload.actor_command_id = sim.actor()
+		payload.decision_id = sim.context.decision_id
+		payload.source_system = "AUTONOMOUS_COMMAND_DECISION"
+		payload.reason_code = "AUTONOMOUS_COMMAND_DECISION"
+	var event: String = sim.commit(event_type, [change("fronts", front)], payload, id)
+	return R.ok(id) if sim.privileged() else R.ok(id, {"changed": true, "event_id": event})
 
 func operational(front: Dictionary) -> bool:
 	return front.enabled and world.get_command(front.responsible_command_id).enabled and world.get_location(front.location_id).enabled and not enabled_stockpile(front.supply_stockpile_id).is_empty()
@@ -109,9 +123,20 @@ func _observe(front: Dictionary) -> void:
 	var cause: String = sim.commit("FRONT_OBSERVED", [change("fronts", front)], {"observed_at": sim.time()}, front.id)
 	var state := metrics(front.id)
 	var facts := {"FRONT_FRIENDLY_STRENGTH": front.friendly_strength_centi, "FRONT_ENEMY_PRESSURE": front.enemy_pressure_centi, "FRONT_POSTURE": front.posture, "FRONT_AMMO_ON_HAND": state.current_ammo_on_hand, "FRONT_AMMO_AVAILABLE": state.current_available_ammo, "FRONT_AMMO_DEMAND_RATE": state.current_desired_ammo_rate_milli, "FRONT_AMMO_COVERAGE_MILLISECONDS": state.ammo_coverage_milliseconds, "FRONT_AMMO_COVERAGE_STATUS": state.ammo_coverage_status, "FRONT_LAST_SHORTAGE": front.last_interval_shortage}
+	var autonomous: bool = world.get_command(front.responsible_command_id).get("local_decision_front_id") == front.id
+	if autonomous:
+		facts["FRONT_INTERVAL_DEMAND"] = front.last_interval_demand
+		facts["FRONT_INTERVAL_CONSUMED"] = front.last_interval_consumed
+	var records: Dictionary = {}
 	for key in facts:
 		var fact := {"subject_entity_id": front.id, "fact_key": key, "value": facts[key], "observed_at": sim.time(), "confidence": 1.0}
-		Information.new(sim).ingest(front.responsible_command_id, fact, "FRONT_OBSERVATION", null, cause)
+		var ingested: Dictionary = Information.new(sim).ingest(front.responsible_command_id, fact, "FRONT_OBSERVATION", null, cause)
+		assert(ingested.success, JSON.stringify({"fact": fact, "result": ingested}))
+		records[key] = ingested.entity_id
+	if autonomous:
+		var batch := {"id": "observation:" + cause, "command_id": front.responsible_command_id, "front_id": front.id, "record_ids": records, "observed_at_micro": Clock.units(sim.time()), "complete": records.size() == 11, "expected_fact_keys": facts.keys()}
+		var completed: String = sim.commit("FRONT_OBSERVATION_COMPLETE", [change("observation_batches", batch)], {"observation_batch_id": batch.id}, batch.id, cause)
+		Journal.new(sim).on_complete(batch, completed)
 
 func metrics(id: String) -> Dictionary:
 	var front: Dictionary = world.get_front(id)

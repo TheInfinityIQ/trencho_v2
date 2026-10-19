@@ -3,8 +3,8 @@ extends RefCounted
 const R = preload("res://kernel/result.gd")
 const Clock = preload("res://kernel/clock.gd")
 const Front = preload("res://kernel/front_definition.gd")
-const PROJECT_VERSION = "0.2.0"
-const SCHEMA_VERSION = "2B.1"
+const PROJECT_VERSION = "0.2.1"
+const SCHEMA_VERSION = "2B.2"
 
 static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dictionary:
 	if not R.json_compatible(data) or not R.json_compatible(seed):
@@ -40,6 +40,7 @@ static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dict
 					record.position_2d = record.get("position_2d", [0, 0])
 				"commands":
 					record.command_level = record.get("command_level", "LOCAL")
+					record.local_decision_front_id = record.get("local_decision_front_id")
 					record.superior_command_id = record.get("superior_command_id")
 					record.subordinate_command_ids = []
 					record.directly_controlled_location_ids = record.get("directly_controlled_location_ids", [])
@@ -138,13 +139,22 @@ static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dict
 			return result
 		state.fronts[data_front.id] = result.details.front
 		used[data_front.id] = true
+	for command in state.commands.values():
+		var front_id: Variant = command.local_decision_front_id
+		if front_id == null:
+			continue
+		if not front_id is String or not state.fronts.has(front_id) or command.command_level != "LOCAL" or state.fronts[front_id].responsible_command_id != command.id:
+			return R.fail("INVALID_LOCAL_PLANNER_CONFIGURATION")
+	state.observation_batches = {}
+	state.decisions = {}
+	state.decision_candidates = {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	state.rng_state = str(rng.state)
 	return R.ok(null, {"snapshot": state})
 
 static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
-	for key in ["schema_version", "project_version", "engine_version", "run_id", "simulation_seed", "initial_world_definition_id", "event_sequence", "input_sequence", "clock", "rng_state", "ended", "public_facts", "locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "messages", "resource_reservations", "information_records", "ledger", "fronts"]:
+	for key in ["schema_version", "project_version", "engine_version", "run_id", "simulation_seed", "initial_world_definition_id", "event_sequence", "input_sequence", "clock", "rng_state", "ended", "public_facts", "locations", "commands", "resource_types", "stockpiles", "logistics_edges", "communication_edges", "shipments", "messages", "resource_reservations", "information_records", "ledger", "fronts", "observation_batches", "decisions", "decision_candidates"]:
 		if not snapshot.has(key):
 			return R.fail("INVALID_SNAPSHOT", {"missing": key})
 	if snapshot.schema_version != SCHEMA_VERSION or snapshot.project_version != PROJECT_VERSION:
@@ -163,7 +173,7 @@ static func validate_initial_snapshot(snapshot: Dictionary) -> Dictionary:
 		for id in snapshot[table]:
 			if not snapshot[table][id] is Dictionary or snapshot[table][id].get("id") != id:
 				return R.fail("INVALID_SNAPSHOT")
-	for table in ["shipments", "messages", "resource_reservations", "information_records"]:
+	for table in ["shipments", "messages", "resource_reservations", "information_records", "observation_batches", "decisions", "decision_candidates"]:
 		if not snapshot[table] is Dictionary or not snapshot[table].is_empty():
 			return R.fail("UNSUPPORTED_SNAPSHOT")
 	var result := load_definition(definition, int(snapshot.simulation_seed), snapshot.run_id)

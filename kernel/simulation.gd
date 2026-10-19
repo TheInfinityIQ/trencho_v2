@@ -13,6 +13,7 @@ const Communication = preload("res://kernel/communication_service.gd")
 const Information = preload("res://kernel/information_service.gd")
 const View = preload("res://kernel/command_view.gd")
 const Fronts = preload("res://kernel/front_service.gd")
+const Journal = preload("res://kernel/decision_journal.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -118,13 +119,13 @@ func _validate_input(input: Dictionary) -> Dictionary:
 		"CreateResource": ["stockpile_id", "resource_type_id", "quantity"], "ConsumeResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"], "DestroyResource": ["stockpile_id", "resource_type_id", "quantity", "reason_code"],
 		"ReserveResource": ["stockpile_id", "resource_type_id", "quantity"], "ReleaseReservation": ["reservation_id"], "ConsumeReservation": ["reservation_id"], "InvalidateReservation": ["reservation_id"],
 		"CreateShipment": ["origin_stockpile_id", "destination_stockpile_id", "resource_type_id", "quantity"], "DispatchShipment": ["shipment_id"], "CancelShipment": ["shipment_id"], "RerouteShipment": ["shipment_id", "destination_stockpile_id"], "DestroyShipment": ["shipment_id", "reason_code"],
-		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "CreateFront": ["front"], "SetFrontEnemyPressure": ["front_id", "value"], "SetFrontFriendlyStrength": ["front_id", "value"], "SetFrontPosture": ["front_id", "value"], "SetFrontEnabled": ["front_id", "value"], "EndRun": []}
+		"SetEnabled": ["table", "entity_id", "enabled"], "ReparentCommand": ["command_id", "superior_command_id"], "SendMessage": ["sender_command_id", "recipient_command_id", "message_type", "payload"], "IngestInformation": ["owner_command_id", "fact"], "CreateFront": ["front"], "SetFrontEnemyPressure": ["front_id", "value"], "SetFrontFriendlyStrength": ["front_id", "value"], "SetFrontPosture": ["front_id", "value"], "SetFrontEnabled": ["front_id", "value"], "EvaluateLocalDecision": ["command_id", "front_id", "record_ids", "complete", "observed_at_micro"], "EndRun": []}
 	if not input.get("type") is String or not required.has(input.type):
 		return R.fail("INVALID_INPUT")
 	for key in required[input.type]:
 		if not input.has(key):
 			return R.fail("INVALID_INPUT", {"missing": key})
-		if key in ["quantity", "payload", "fact", "front", "value", "enabled", "superior_command_id"]:
+		if key in ["quantity", "payload", "fact", "front", "value", "record_ids", "complete", "observed_at_micro", "enabled", "superior_command_id"]:
 			continue
 		if not input[key] is String or input[key].is_empty():
 			return R.fail("INVALID_INPUT", {"field": key})
@@ -143,6 +144,8 @@ func _validate_input(input: Dictionary) -> Dictionary:
 
 func _execute(i: Dictionary) -> Dictionary:
 	match i.type:
+		"EvaluateLocalDecision":
+			return Journal.new(self).debug_evaluate(i)
 		"CreateFront":
 			return Fronts.new(self).create(i.front)
 		"SetFrontEnemyPressure", "SetFrontFriendlyStrength", "SetFrontPosture", "SetFrontEnabled":
@@ -245,3 +248,11 @@ func audit() -> Dictionary:
 
 func front_metrics(id: String) -> Dictionary:
 	return Fronts.new(self).metrics(id)
+
+func decision_journal(command_id: String) -> Array:
+	var result: Array = []
+	for id in world.ids("decisions"):
+		var decision: Dictionary = world.get_entity("decisions", id)
+		if decision.command_id == command_id:
+			result.append(decision)
+	return result

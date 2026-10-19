@@ -73,3 +73,7 @@ Godot 4.7 documentation was checked while implementing, and behavior was execute
 ## Step 103 extension
 
 FrontDefinition and FrontService implement abstract front state, deterministic fixed-point demand and local sampling. TICK_ADVANCED carries prepared front accumulator patches; logistics/messages resolve before front consumption/interval finalization. ResourceService retains stock ownership. InformationService retains belief ownership. The front state never enters CommandView. See FRONTS_103.md for integer units, event sequence, tick precision, schema change and review boundary.
+
+## Step 104 local decision boundary
+
+LocalCommandPlanner consumes only a detached CommandView and complete observation envelope. DecisionPolicy104 isolates integer prototype scores/eligibility/ties. DecisionJournal coordinates event projections and asks FrontService/AuthorityService to validate the chosen posture change. It attaches descriptive observed outcomes before the next decision. Optional command configuration activates only the responsible LOCAL/front pair. See DECISIONS_104.md.

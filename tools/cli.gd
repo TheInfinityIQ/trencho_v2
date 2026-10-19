@@ -2,6 +2,7 @@ extends SceneTree
 
 const Demo = preload("res://debug/demo.gd")
 const FrontDemo = preload("res://debug/front_demo.gd")
+const DecisionDemo = preload("res://debug/decision_demo.gd")
 const Exporter = preload("res://kernel/run_exporter.gd")
 
 func _initialize() -> void:
@@ -11,8 +12,8 @@ func _initialize() -> void:
 	var result: Dictionary
 	if mode == "replay":
 		result = Exporter.replay_package(directory)
-	elif mode in ["demo", "front-demo"]:
-		result = FrontDemo.run() if mode == "front-demo" else Demo.run()
+	elif mode in ["demo", "front-demo", "decision-demo"]:
+		result = DecisionDemo.run() if mode == "decision-demo" else (FrontDemo.run() if mode == "front-demo" else Demo.run())
 		if result.success:
 			var sim: RefCounted = result.details.simulation
 			print("LEDGER ", JSON.stringify(sim.audit()))

@@ -1,4 +1,4 @@
-# Diagnostic schemas — 2B.1 / project 0.2.0
+# Diagnostic schemas — 2B.2 / project 0.2.1
 
 Step 103 adds the fronts registry with canonical integer fixed-point fields and private front observations; see FRONTS_103.md for field and belief units. Current replay requires schema2B.1/project0.2.0. The following closeout notes describe the preserved 2A baseline.
 
@@ -128,3 +128,7 @@ Replay validates the initial world, applies external commands at their original 
 ## 2B.1 front and import additions
 
 Snapshots add fronts, including integer centi-strength/pressure, milli-ammo base rate, micro-ammo accumulator, microsecond observation deadlines and integer interval counters. Front belief values follow the canonical unit table in FRONTS_103.md; coverage has both milliseconds and a FINITE/ZERO_DEMAND/OUT_OF_RANGE status fact. Each sample now emits nine facts. Run artifact imports preserve exact integer number tokens within +/-9007199254740991 and explicitly reject unsupported integer tokens. Decimal/exponent interpretation and string values retain their existing behavior. The external JSON format and strict comparison are unchanged.
+
+## 2B.2 decision additions
+
+Commands gain nullable local_decision_front_id. New authoritative registries: observation_batches, decisions, decision_candidates. Autonomous observation batches have11 records and explicit completion; ordinary103 fronts retain9. Decision/candidate/outcome fields, canonical units, correlation/causation and privileged diagnostic input are specified in DECISIONS_104.md. Current replay requires project0.2.1/schema2B.2; accepted earlier packages use their preserved source revisions. Exact integer import and strict comparison remain unchanged.

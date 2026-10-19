@@ -10,6 +10,7 @@ const World = preload("res://kernel/world_state.gd")
 const Closeout = preload("res://tests/closeout_cases.gd")
 const Definition = preload("res://kernel/world_definition.gd")
 const FrontCases = preload("res://tests/front_cases.gd")
+const DecisionCases = preload("res://tests/decision_cases.gd")
 var checks: Array = []
 var failures: Array = []
 
@@ -81,6 +82,9 @@ func _initialize() -> void:
 		check(item.passed, item.name)
 	var fronts: Dictionary = FrontCases.run()
 	for item in fronts.checks:
+		check(item.passed, item.name)
+	var decisions: Dictionary = DecisionCases.run()
+	for item in decisions.checks:
 		check(item.passed, item.name)
 	var report := {"schema_version": Definition.SCHEMA_VERSION, "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
 	Exporter.write_json("res://artifacts/acceptance_results.json", report)
