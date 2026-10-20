@@ -104,3 +104,8 @@ Project0.3.2/schema2C.3. Opt-in Operational Commands evaluate pending prompts on
 ## 112 — Command-generated information requirements
 
 Project0.3.3/schema2C.4. An explicitly enabled Operational Command turns unsupported111 attention/assessment evaluations into one OPEN AREA_SITUATION_ASSESSMENT work item per owner/area/type. Repeated gaps link ordered provenance; no facts, fulfillment, missions or military action follow. Independent config/stream/projection preserve prior world, observer and prompt/evaluation behavior. See docs/INFORMATION_REQUIREMENTS_112.md and REQUIREMENTS_112.md. Run tools/run.ps1 -Mode requirements -TimeoutSeconds240; fullsuite -Mode test -TimeoutSeconds900. Stop at112 review; no113.
+# 113 subordinate situation reports
+
+Operational commands may opt into `strategic_subordinate_reporting_enabled` to satisfy an area information gap by requesting a responsible Local command's existing observation through actual communications. Player answers and military policy remain unchanged. See [the contract](docs/INFORMATION_COLLECTION_113.md), [requirements](docs/REQUIREMENTS_113.md) and [approved fixture clarification](docs/AMENDMENT_113.md).
+
+Headless verification: `tools/run.ps1 -Mode collections -TimeoutSeconds 300`; full regression: `-Mode test -TimeoutSeconds 1200`; fresh replay: `-Mode replay -Package res://artifacts/run_step113_A` (or another generated scenario).

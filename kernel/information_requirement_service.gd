@@ -1,9 +1,10 @@
 extends RefCounted
-# A work-item projection, never an InformationRecord or collection mechanism.
+# A work-item projection, never an InformationRecord. Satisfaction uses certified
+# typed references from the separate collection stream, without duplicating facts.
 # Sources are typed references to completed111 evaluations, not same-stream causes.
 const R = preload("res://kernel/result.gd")
 const View = preload("res://kernel/information_requirement_view.gd")
-const SCHEMA = "2C.4.information-requirement.1"
+const SCHEMA = "2C.5.information-requirement.1"
 const TYPE = "AREA_SITUATION_ASSESSMENT"
 const REASON = "PLAYER_PROMPT_INFORMATION_GAP"
 const SOURCE_FIELDS = ["evaluation_id", "prompt_id", "recipient_command_id", "area_id", "prompt_type", "evaluated_at", "result", "assessment_code", "evaluated_event_id", "state"]
@@ -15,6 +16,32 @@ var _sources: Dictionary = {}
 var _processed: Dictionary = {}
 var _events: Array = []
 var _requirements: Array = []
+var _completions: Dictionary = {}
+
+# Completion registry is certified by the collection coordinator / replay verifier.
+# These are typed cross-stream references, never battlefield facts.
+func register_completion(item: Dictionary) -> void:
+	if item.get("state") == "COMPLETED" and item.get("result_code") == "REPORT_DELIVERED": _completions[item.collection_id] = item.duplicate(true)
+
+func satisfy(item: Dictionary) -> Dictionary:
+	var existing := _open(item.owner_command_id, item.area_id)
+	if existing.is_empty() or existing.requirement_id != item.requirement_id: return R.fail("INVALID_REQUIREMENT_SATISFACTION")
+	return apply_event({"schema_version": SCHEMA, "requirement_event_id": "information-requirement-event:%010d" % (_events.size() + 1), "previous_requirement_event_id": null if _events.is_empty() else _events.back().requirement_event_id, "event_type": "INFORMATION_REQUIREMENT_SATISFIED", "requirement_id": item.requirement_id, "owner_command_id": item.owner_command_id, "area_id": item.area_id, "collection_id": item.collection_id, "response_message_id": item.response_message_id, "information_record_ids": item.information_record_ids.duplicate(), "satisfied_at": item.completed_at})
+
+func _apply_satisfied(event: Dictionary) -> Dictionary:
+	var fields := ["schema_version", "requirement_event_id", "previous_requirement_event_id", "event_type", "requirement_id", "owner_command_id", "area_id", "collection_id", "response_message_id", "information_record_ids", "satisfied_at"]
+	if event.size() != fields.size() or event.keys().any(func(k): return k not in fields) or event.get("schema_version") != SCHEMA or event.get("requirement_event_id") != "information-requirement-event:%010d" % (_events.size() + 1) or event.get("previous_requirement_event_id") != (null if _events.is_empty() else _events.back().requirement_event_id) or not _completions.has(event.get("collection_id")): return R.fail("INVALID_REQUIREMENT_SATISFACTION")
+	var item: Dictionary = _completions[event.collection_id]
+	var existing := _open(item.owner_command_id, item.area_id)
+	if existing.is_empty() or existing.requirement_id != item.requirement_id or event.requirement_id != item.requirement_id or event.owner_command_id != item.owner_command_id or event.area_id != item.area_id or event.response_message_id != item.response_message_id or event.information_record_ids != item.information_record_ids or event.satisfied_at != item.completed_at or event.satisfied_at < existing.last_updated_at: return R.fail("INVALID_REQUIREMENT_SATISFACTION")
+	existing.state = "SATISFIED"
+	existing.satisfied_at = event.satisfied_at
+	existing.last_updated_at = event.satisfied_at
+	existing.satisfaction_collection_id = item.collection_id
+	existing.satisfaction_message_id = item.response_message_id
+	existing.satisfaction_information_record_ids = item.information_record_ids.duplicate()
+	_events.append(event.duplicate(true))
+	return R.ok(item.requirement_id)
 
 func _init(areas: Dictionary = {}, owners: Array = [], configuration: Array = [], sources: Array = []) -> void:
 	for id in areas: _area_ids[id] = areas[id].enabled
@@ -63,6 +90,7 @@ func on_evaluation(source: Dictionary) -> void:
 	assert(result.success)
 
 func apply_event(event: Dictionary) -> Dictionary:
+	if event.get("event_type") == "INFORMATION_REQUIREMENT_SATISFIED": return _apply_satisfied(event)
 	if event.size() != EVENT_FIELDS.size() or event.keys().any(func(k): return k not in EVENT_FIELDS) or event.get("schema_version") != SCHEMA or event.get("requirement_event_id") != "information-requirement-event:%010d" % (_events.size() + 1) or event.get("previous_requirement_event_id") != (null if _events.is_empty() else _events.back().requirement_event_id): return R.fail("INVALID_REQUIREMENT_EVENT")
 	if event.requirement_type != TYPE or event.state != "OPEN" or event.creation_reason != REASON or not event.metadata is Dictionary or not event.metadata.is_empty() or not _enabled.get(event.owner_command_id, false) or event.owner_command_id not in _owner_ids or not _area_ids.get(event.area_id, false) or not _sources.has(event.source_evaluation_id): return R.fail("INVALID_REQUIREMENT_EVENT")
 	var source: Dictionary = _sources[event.source_evaluation_id]

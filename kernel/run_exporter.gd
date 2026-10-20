@@ -11,6 +11,9 @@ const Prompts = preload("res://kernel/player_prompt_service.gd")
 const PromptConfig = preload("res://kernel/prompt_evaluation_config.gd")
 const Requirements = preload("res://kernel/information_requirement_service.gd")
 const RequirementConfig = preload("res://kernel/information_requirement_config.gd")
+const Collections = preload("res://kernel/information_collection_state.gd")
+const CollectionConfig = preload("res://kernel/information_collection_config.gd")
+const CollectionAudit = preload("res://kernel/information_collection_audit.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -77,6 +80,9 @@ static func export_run(sim: RefCounted, directory: String) -> Dictionary:
 	for pair in [["information_requirement_events.jsonl", sim.information_requirements.events(), true], ["final_information_requirements.json", requirement_projection(sim), false], ["player_prompt_information_requirement_config.json", {"schema_version": RequirementConfig.SCHEMA, "commands": sim.information_requirement_configuration()}, false]]:
 		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
 	manifest.information_requirement = {"schema_version": Requirements.SCHEMA, "file": "information_requirement_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("information_requirement_events.jsonl")), "projection_file": "final_information_requirements.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_information_requirements.json")), "config_file": "player_prompt_information_requirement_config.json", "config_schema_version": RequirementConfig.SCHEMA, "config_sha256": FileAccess.get_sha256(directory.path_join("player_prompt_information_requirement_config.json"))}
+	for pair in [["information_collection_events.jsonl", sim.information_collections.events(), true], ["final_information_collections.json", sim.information_collections.snapshot(), false], ["information_collection_config.json", {"schema_version": CollectionConfig.SCHEMA, "commands": sim.information_collection_configuration()}, false]]:
+		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
+	manifest.information_collection = {"schema_version": Collections.SCHEMA, "file": "information_collection_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("information_collection_events.jsonl")), "projection_file": "final_information_collections.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_information_collections.json")), "config_file": "information_collection_config.json", "config_schema_version": CollectionConfig.SCHEMA, "config_sha256": FileAccess.get_sha256(directory.path_join("information_collection_config.json"))}
 	if not write_json(directory.path_join("manifest.json"), manifest): return R.fail("EXPORT_FAILED", {"file": "manifest.json"})
 	return R.ok(null, {"directory": directory})
 
@@ -120,9 +126,9 @@ static func read_lines(path: String) -> Dictionary:
 		result.append(parsed.details.value)
 	return R.ok(null, {"value": result})
 
-static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = []) -> Dictionary:
+static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = []) -> Dictionary:
 	var sim := Simulation.new()
-	var initialized := sim.initialize_snapshot(initial, strategic_areas, prompt_configuration, requirement_configuration)
+	var initialized := sim.initialize_snapshot(initial, strategic_areas, prompt_configuration, requirement_configuration, collection_configuration)
 	if not initialized.success:
 		return initialized
 	for record in recorded_inputs:
@@ -167,6 +173,15 @@ static func replay_package(directory: String) -> Dictionary:
 		loaded[pair[0]] = read.details.value
 	var requirement_configuration: Dictionary = loaded["player_prompt_information_requirement_config.json"]
 	if requirement_configuration.size() != 2 or requirement_configuration.get("schema_version") != RequirementConfig.SCHEMA or not requirement_configuration.get("commands") is Array: return R.fail("INVALID_REQUIREMENT_CONFIGURATION")
+	var collection_manifest: Variant = manifest.get("information_collection")
+	if not collection_manifest is Dictionary or collection_manifest.get("schema_version") != Collections.SCHEMA or collection_manifest.get("file") != "information_collection_events.jsonl" or collection_manifest.get("projection_file") != "final_information_collections.json" or collection_manifest.get("config_file") != "information_collection_config.json" or collection_manifest.get("config_schema_version") != CollectionConfig.SCHEMA: return R.fail("INVALID_COLLECTION_PACKAGE")
+	for pair in [["information_collection_events.jsonl", "sha256"], ["final_information_collections.json", "projection_sha256"], ["information_collection_config.json", "config_sha256"]]:
+		if collection_manifest.get(pair[1]) != FileAccess.get_sha256(directory.path_join(pair[0])): return R.fail("COLLECTION_PACKAGE_HASH_MISMATCH")
+		var read := read_lines(directory.path_join(pair[0])) if pair[0].ends_with("jsonl") else read_json(directory.path_join(pair[0]))
+		if not read.success: return read
+		loaded[pair[0]] = read.details.value
+	var collection_configuration: Dictionary = loaded["information_collection_config.json"]
+	if collection_configuration.size() != 2 or collection_configuration.get("schema_version") != CollectionConfig.SCHEMA or not collection_configuration.get("commands") is Array: return R.fail("INVALID_COLLECTION_CONFIGURATION")
 	if prompt_manifest.get("schema_version") != Prompts.SCHEMA or prompt_manifest.get("file") != "player_prompt_events.jsonl" or prompt_manifest.get("projection_file") != "final_player_prompts.json": return R.fail("INVALID_PROMPT_PACKAGE")
 	for pair in [["player_prompt_events.jsonl", "sha256"], ["final_player_prompts.json", "projection_sha256"], ["inputs.jsonl", "inputs_sha256"]]:
 		if prompt_manifest.get(pair[1]) != FileAccess.get_sha256(directory.path_join(pair[0])): return R.fail("PROMPT_PACKAGE_HASH_MISMATCH")
@@ -191,7 +206,7 @@ static func replay_package(directory: String) -> Dictionary:
 		for pair in [["authoritative", "events.jsonl", Definition.SCHEMA_VERSION], ["player_observation", "player_observation_events.jsonl", "2C.1.player-observation.1"]]:
 			if not streams.get(pair[0]) is Dictionary or streams[pair[0]].get("file") != pair[1] or streams[pair[0]].get("schema_version") != pair[2] or streams[pair[0]].get("sha256") != FileAccess.get_sha256(directory.path_join(pair[1])): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
 		if manifest.get("observer_configuration_sha256") != FileAccess.get_sha256(directory.path_join("player_observer_config.json")) or manifest.get("observer_projection_sha256") != FileAccess.get_sha256(directory.path_join("final_player_observer.json")): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
-	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration, evaluation_configuration.details.value.commands, requirement_configuration.commands)
+	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration, evaluation_configuration.details.value.commands, requirement_configuration.commands, collection_configuration.commands)
 	if not replayed.success:
 		return replayed
 	var sim: RefCounted = replayed.details.simulation
@@ -204,6 +219,12 @@ static func replay_package(directory: String) -> Dictionary:
 	if not observer_equivalent(sim.information_requirements.events(), loaded["information_requirement_events.jsonl"]) or not observer_equivalent(requirement_projection(sim), loaded["final_information_requirements.json"]): return R.fail("INFORMATION_REQUIREMENT_REPLAY_MISMATCH")
 	var owner_ids: Array = sim.world.ids("commands").filter(func(id): return sim.world.get_command(id).command_level == "OPERATIONAL")
 	var rebuilt_requirements := Requirements.new(sim.player_observer.configuration(), owner_ids, sim.information_requirement_configuration(), rebuilt.snapshot().evaluations)
+	if not observer_equivalent(sim.information_collections.events(), loaded["information_collection_events.jsonl"]) or not observer_equivalent(sim.information_collections.snapshot(), loaded["final_information_collections.json"]): return R.fail("INFORMATION_COLLECTION_REPLAY_MISMATCH")
+	var reconstructed_collections := CollectionAudit.reconstruct(loaded["initial_world.json"], sim.information_collection_configuration(), sim.player_observer.configuration(), loaded["final_information_requirements.json"].state.requirements, loaded["information_collection_events.jsonl"], loaded["events.jsonl"])
+	if not reconstructed_collections.success: return reconstructed_collections
+	var rebuilt_collections: RefCounted = reconstructed_collections.details.state
+	if not observer_equivalent(rebuilt_collections.snapshot(), sim.information_collections.snapshot()): return R.fail("INFORMATION_COLLECTION_RECONSTRUCTION_MISMATCH")
+	for item in rebuilt_collections.records(): rebuilt_requirements.register_completion(item)
 	for event in loaded["information_requirement_events.jsonl"]:
 		if not rebuilt_requirements.apply_event(event).success: return R.fail("INVALID_REQUIREMENT_EVENT")
 	if not observer_equivalent(rebuilt_requirements.snapshot(), sim.information_requirements.snapshot()): return R.fail("INFORMATION_REQUIREMENT_RECONSTRUCTION_MISMATCH")
@@ -228,6 +249,10 @@ static func replay_package(directory: String) -> Dictionary:
 	details.requirement_projection_match = true
 	details.requirement_count = sim.information_requirements.snapshot().requirements.size()
 	details.requirement_event_count = sim.information_requirements.events().size()
+	details.collection_events_match = true
+	details.collection_projection_match = true
+	details.collection_count = sim.information_collections.records().size()
+	details.collection_event_count = sim.information_collections.events().size()
 	if manifest.player_observation_enabled:
 		var observed := {"state": sim.player_observer.snapshot(), "view": sim.player_view().snapshot()}
 		if not observer_equivalent(sim.player_observer.events(), loaded["player_observation_events.jsonl"]) or not observer_equivalent(observed, loaded["final_player_observer.json"]): return R.fail("PLAYER_OBSERVATION_REPLAY_MISMATCH")

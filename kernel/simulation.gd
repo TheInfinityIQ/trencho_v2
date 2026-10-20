@@ -25,6 +25,9 @@ const PromptConfig = preload("res://kernel/prompt_evaluation_config.gd")
 const PromptPolicy = preload("res://kernel/prompt_evaluation_policy.gd")
 const RequirementConfig = preload("res://kernel/information_requirement_config.gd")
 const Requirements = preload("res://kernel/information_requirement_service.gd")
+const CollectionConfig = preload("res://kernel/information_collection_config.gd")
+const Collections = preload("res://kernel/information_collection_state.gd")
+const CollectionService = preload("res://kernel/information_collection_service.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -40,6 +43,8 @@ var _prompt_input_sequence := 0
 var _prompt_evaluation_config: Array = []
 var _information_requirement_config: Array = []
 var information_requirements := Requirements.new()
+var information_collections := Collections.new()
+var _information_collection_config: Array = []
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
@@ -49,12 +54,14 @@ func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictio
 	if not extracted.success: return extracted
 	var requirements_extracted := RequirementConfig.extract(extracted.details.definition)
 	if not requirements_extracted.success: return requirements_extracted
-	var loaded: Dictionary = Definition.load_definition(requirements_extracted.details.definition, seed, run_id)
+	var collection_extracted := CollectionConfig.extract(requirements_extracted.details.definition)
+	if not collection_extracted.success: return collection_extracted
+	var loaded: Dictionary = Definition.load_definition(collection_extracted.details.definition, seed, run_id)
 	if not loaded.success:
 		return loaded
-	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration, requirements_extracted.details.configuration)
+	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration, requirements_extracted.details.configuration, collection_extracted.details.configuration)
 
-func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = []) -> Dictionary:
+func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = []) -> Dictionary:
 	var validation: Dictionary = Definition.validate_initial_snapshot(snapshot)
 	if not validation.success:
 		return validation
@@ -64,6 +71,10 @@ func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], pr
 	if not prompt_configured.success: return prompt_configured
 	var requirements_configured := RequirementConfig.normalize(requirement_configuration, snapshot.commands)
 	if not requirements_configured.success: return requirements_configured
+	var collection_configured := CollectionConfig.normalize(collection_configuration, snapshot.commands)
+	if not collection_configured.success: return collection_configured
+	_information_collection_config = collection_configured.details.configuration
+	information_collections = Collections.new()
 	_prompt_evaluation_config = prompt_configured.details.configuration
 	_information_requirement_config = requirements_configured.details.configuration
 	player_observer = Observer.new(configured.details.areas)
@@ -167,6 +178,9 @@ func prompt_evaluation_configuration() -> Array:
 
 func information_requirement_configuration() -> Array:
 	return _information_requirement_config.duplicate(true)
+
+func information_collection_configuration() -> Array:
+	return _information_collection_config.duplicate(true)
 
 func information_requirement_view(command_id: String) -> RefCounted:
 	return information_requirements.view(command_id)
@@ -314,7 +328,9 @@ func advance(ticks: int = 1) -> Dictionary:
 		Logistics.new(self).step()
 		Resolution.new(self).sync_known_transfers()
 		Communication.new(self).step()
+		CollectionService.new(self).drain()
 		Fronts.new(self).resolve_tick(prepared.demands, tick_event)
+		CollectionService.new(self).drain()
 		Resolution.new(self).step(tick_event)
 		var superior_enabled := false
 		for command_id in world.ids("commands"):
@@ -324,6 +340,7 @@ func advance(ticks: int = 1) -> Dictionary:
 			# Drain newly sent zero-latency material updates before this boundary's AI.
 			Resolution.new(self).step(tick_event)
 		_evaluate_player_prompts()
+		CollectionService.new(self).start_boundary()
 		if superior_enabled:
 			Arbitration.new(self).step(tick_event)
 			# Zero-latency orders are received after arbitration, before the next tick.
