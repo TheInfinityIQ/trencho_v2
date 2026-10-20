@@ -1,6 +1,6 @@
 param(
     [string]$GodotPath = $env:GODOT_BIN,
-    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo','needs','need-demo','arbitration','integrated','observer','prompts','evaluations','requirements','collections','followups')][string]$Mode = 'test',
+    [ValidateSet('test','demo','replay','import','smoke','visual','closeout','inspector-headless','fronts','front-demo','decisions','decision-demo','needs','need-demo','arbitration','integrated','observer','prompts','evaluations','requirements','collections','followups','player-ui','player-graphical','player-replay','player-startup','inspector')][string]$Mode = 'test',
     [string]$Package = 'res://artifacts/run_demo',
     [int]$TimeoutSeconds = 60
 )
@@ -30,8 +30,13 @@ New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
 $start.Environment['APPDATA'] = $dataDirectory
 $start.Environment['LOCALAPPDATA'] = $dataDirectory
 $engineArguments = @('--headless','--path',$projectRoot,'--log-file',(Join-Path $logDirectory ($Mode + '.godot.log')))
-if ($Mode -eq 'visual') { $engineArguments = @('--audio-driver','Dummy','--path',$projectRoot,'--log-file',(Join-Path $logDirectory 'visual.godot.log')) }
+if ($Mode -in @('visual','player-graphical','player-replay','player-startup','inspector')) { $engineArguments = @('--audio-driver','Dummy','--path',$projectRoot,'--log-file',(Join-Path $logDirectory ($Mode + '.godot.log'))) }
 switch ($Mode) {
+    'player-replay' { $engineArguments += @('--script','res://tests/player_replay_render.gd') }
+    'player-startup' { $engineArguments += @('--script','res://tests/player_startup.gd') }
+    'player-ui' { $engineArguments += @('--script','res://tests/player_surface_smoke.gd') }
+    'player-graphical' { $engineArguments += @('--script','res://tests/player_surface_smoke.gd','--',$Package) }
+    'inspector' { $engineArguments += @('res://debug/inspector.tscn') }
     'import' { $engineArguments += @('--editor','--import') }
     'smoke' { $engineArguments += @('--quit-after','3') }
     'test' { $engineArguments += @('--script','res://tests/acceptance.gd') }

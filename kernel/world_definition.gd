@@ -4,8 +4,8 @@ const R = preload("res://kernel/result.gd")
 const Clock = preload("res://kernel/clock.gd")
 const Front = preload("res://kernel/front_definition.gd")
 const InitialCargo = preload("res://kernel/initial_cargo.gd")
-const PROJECT_VERSION = "0.3.5"
-const SCHEMA_VERSION = "2C.6"
+const PROJECT_VERSION = "0.3.6"
+const SCHEMA_VERSION = "2C.7"
 
 static func load_definition(data: Dictionary, seed: int, run_id: String) -> Dictionary:
 	if not R.json_compatible(data) or not R.json_compatible(seed):

@@ -1,8 +1,10 @@
-# Trencho — Generation 2 simulation prototype (Step 105)
+# Trencho — Generation 2 simulation prototype (Step 115)
 
 A separate Godot 4.7.2 stable project implementing the simulation kernel requirements v0.1 and the designer's three clarifications. No code or architecture was copied from the tactical prototype.
 
-Open `project.godot` with **Godot 4.7.2 stable**, then run the main scene. The developer inspector starts idle; click **Run demonstration** to execute the fixture. Its export button writes a run package and verifies replay from the files on disk.
+Open `project.godot` with **Godot 4.7.2 stable**, then press Play. The greybox battlefield runs autonomously: select an area, then use **Look Here** or **What Happened Here?** to send a request. Observer cues and command assessments remain distinct. See [player surface](docs/PLAYER_SURFACE_115.md) for the controls, bounded scheduler and verification commands.
+
+The developer inspector remains separate: launch `./tools/open_inspector.ps1` or its explicit `debug/inspector.tscn` scene. It starts idle; click **Run demonstration** to execute its fixture. Its export button writes a run package and verifies replay from disk.
 
 After a reported system freeze on editor Play, presentation is capped at 30 FPS with idle redraw throttling. The cause is unconfirmed; see [startup diagnostics](docs/STARTUP_DIAGNOSTICS.md). For a standalone window without editor embedding, run `./tools/open_inspector.ps1` in PowerShell 7. That launcher was not graphically retested during the freeze investigation.
 

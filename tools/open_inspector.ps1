@@ -13,7 +13,7 @@ $start.FileName = $GodotPath
 $start.WorkingDirectory = $projectRoot
 $start.UseShellExecute = $false
 # Interactive launch requested by the user running this helper; no editor --wid embedding.
-foreach ($argument in @('--path',$projectRoot,'--max-fps','30','--log-file',(Join-Path $logRoot 'standalone.godot.log'))) {
+foreach ($argument in @('--path',$projectRoot,'--max-fps','30','--log-file',(Join-Path $logRoot 'standalone.godot.log'),'res://debug/inspector.tscn')) {
     $start.ArgumentList.Add($argument)
 }
 $process = [System.Diagnostics.Process]::Start($start)

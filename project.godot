@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Trencho 2A — Simulation Kernel"
-config/version="0.3.5"
-run/main_scene="res://debug/inspector.tscn"
+config/version="0.3.6"
+run/main_scene="res://player/battlefield.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 run/max_fps=30
 run/low_processor_mode=true
@@ -20,8 +20,8 @@ run/low_processor_mode_sleep_usec=33333
 
 [display]
 
-window/size/viewport_width=1100
-window/size/viewport_height=760
+window/size/viewport_width=1280
+window/size/viewport_height=720
 
 [rendering]
 
