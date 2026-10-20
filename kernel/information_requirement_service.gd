@@ -1,4 +1,5 @@
 extends RefCounted
+signal satisfaction_completed(requirement: Dictionary)
 # A work-item projection, never an InformationRecord. Satisfaction uses certified
 # typed references from the separate collection stream, without duplicating facts.
 # Sources are typed references to completed111 evaluations, not same-stream causes.
@@ -26,7 +27,9 @@ func register_completion(item: Dictionary) -> void:
 func satisfy(item: Dictionary) -> Dictionary:
 	var existing := _open(item.owner_command_id, item.area_id)
 	if existing.is_empty() or existing.requirement_id != item.requirement_id: return R.fail("INVALID_REQUIREMENT_SATISFACTION")
-	return apply_event({"schema_version": SCHEMA, "requirement_event_id": "information-requirement-event:%010d" % (_events.size() + 1), "previous_requirement_event_id": null if _events.is_empty() else _events.back().requirement_event_id, "event_type": "INFORMATION_REQUIREMENT_SATISFIED", "requirement_id": item.requirement_id, "owner_command_id": item.owner_command_id, "area_id": item.area_id, "collection_id": item.collection_id, "response_message_id": item.response_message_id, "information_record_ids": item.information_record_ids.duplicate(), "satisfied_at": item.completed_at})
+	var result := apply_event({"schema_version": SCHEMA, "requirement_event_id": "information-requirement-event:%010d" % (_events.size() + 1), "previous_requirement_event_id": null if _events.is_empty() else _events.back().requirement_event_id, "event_type": "INFORMATION_REQUIREMENT_SATISFIED", "requirement_id": item.requirement_id, "owner_command_id": item.owner_command_id, "area_id": item.area_id, "collection_id": item.collection_id, "response_message_id": item.response_message_id, "information_record_ids": item.information_record_ids.duplicate(), "satisfied_at": item.completed_at})
+	if result.success: satisfaction_completed.emit(existing.duplicate(true))
+	return result
 
 func _apply_satisfied(event: Dictionary) -> Dictionary:
 	var fields := ["schema_version", "requirement_event_id", "previous_requirement_event_id", "event_type", "requirement_id", "owner_command_id", "area_id", "collection_id", "response_message_id", "information_record_ids", "satisfied_at"]

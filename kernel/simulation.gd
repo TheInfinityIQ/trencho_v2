@@ -28,6 +28,7 @@ const Requirements = preload("res://kernel/information_requirement_service.gd")
 const CollectionConfig = preload("res://kernel/information_collection_config.gd")
 const Collections = preload("res://kernel/information_collection_state.gd")
 const CollectionService = preload("res://kernel/information_collection_service.gd")
+const FollowUpConfig = preload("res://kernel/prompt_follow_up_config.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -45,6 +46,7 @@ var _information_requirement_config: Array = []
 var information_requirements := Requirements.new()
 var information_collections := Collections.new()
 var _information_collection_config: Array = []
+var _prompt_follow_up_config: Array = []
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
@@ -56,12 +58,14 @@ func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictio
 	if not requirements_extracted.success: return requirements_extracted
 	var collection_extracted := CollectionConfig.extract(requirements_extracted.details.definition)
 	if not collection_extracted.success: return collection_extracted
-	var loaded: Dictionary = Definition.load_definition(collection_extracted.details.definition, seed, run_id)
+	var follow_up_extracted := FollowUpConfig.extract(collection_extracted.details.definition)
+	if not follow_up_extracted.success: return follow_up_extracted
+	var loaded: Dictionary = Definition.load_definition(follow_up_extracted.details.definition, seed, run_id)
 	if not loaded.success:
 		return loaded
-	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration, requirements_extracted.details.configuration, collection_extracted.details.configuration)
+	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration, requirements_extracted.details.configuration, collection_extracted.details.configuration, follow_up_extracted.details.configuration)
 
-func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = []) -> Dictionary:
+func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = [], follow_up_configuration: Variant = []) -> Dictionary:
 	var validation: Dictionary = Definition.validate_initial_snapshot(snapshot)
 	if not validation.success:
 		return validation
@@ -73,16 +77,20 @@ func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], pr
 	if not requirements_configured.success: return requirements_configured
 	var collection_configured := CollectionConfig.normalize(collection_configuration, snapshot.commands)
 	if not collection_configured.success: return collection_configured
+	var follow_up_configured := FollowUpConfig.normalize(follow_up_configuration, snapshot.commands)
+	if not follow_up_configured.success: return follow_up_configured
+	_prompt_follow_up_config = follow_up_configured.details.configuration
 	_information_collection_config = collection_configured.details.configuration
 	information_collections = Collections.new()
 	_prompt_evaluation_config = prompt_configured.details.configuration
 	_information_requirement_config = requirements_configured.details.configuration
 	player_observer = Observer.new(configured.details.areas)
-	player_prompts = Prompts.new(configured.details.areas)
+	player_prompts = Prompts.new(configured.details.areas, _prompt_follow_up_config)
 	var owners: Array = snapshot.commands.keys().filter(func(id): return snapshot.commands[id].command_level == "OPERATIONAL")
 	owners.sort()
 	information_requirements = Requirements.new(configured.details.areas, owners, _information_requirement_config)
 	player_prompts.evaluation_completed.connect(information_requirements.on_evaluation)
+	information_requirements.satisfaction_completed.connect(_on_information_requirement_satisfied)
 	_prompt_input_sequence = 0
 	initial_world = snapshot.duplicate(true)
 	# Restore the new fixed-point front fields to integer types after JSON parsing.
@@ -181,6 +189,24 @@ func information_requirement_configuration() -> Array:
 
 func information_collection_configuration() -> Array:
 	return _information_collection_config.duplicate(true)
+
+func prompt_follow_up_configuration() -> Array:
+	return _prompt_follow_up_config.duplicate(true)
+
+# Trusted acquisition bridge selects exact recorded IDs, never current beliefs.
+# Only detached certified-chain data enters the pure presentation policy.
+func follow_up_evidence(requirement: Dictionary) -> Dictionary:
+	var records: Array = []
+	for id in requirement.satisfaction_information_record_ids: records.append(world.get_entity("information_records", id))
+	return {"requirement": requirement.duplicate(true), "collection": information_collections.record(requirement.satisfaction_collection_id), "response": world.get_entity("messages", requirement.satisfaction_message_id), "information_records": records}
+
+func _on_information_requirement_satisfied(requirement: Dictionary) -> void:
+	var enabled := false
+	for entry in _prompt_follow_up_config:
+		if entry.operational_command_id == requirement.owner_command_id: enabled = entry.enabled
+	if not enabled: return
+	var result: Dictionary = player_prompts.issue_follow_ups(follow_up_evidence(requirement))
+	assert(result.success, JSON.stringify(result))
 
 func information_requirement_view(command_id: String) -> RefCounted:
 	return information_requirements.view(command_id)

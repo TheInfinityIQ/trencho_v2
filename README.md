@@ -109,3 +109,8 @@ Project0.3.3/schema2C.4. An explicitly enabled Operational Command turns unsuppo
 Operational commands may opt into `strategic_subordinate_reporting_enabled` to satisfy an area information gap by requesting a responsible Local command's existing observation through actual communications. Player answers and military policy remain unchanged. See [the contract](docs/INFORMATION_COLLECTION_113.md), [requirements](docs/REQUIREMENTS_113.md) and [approved fixture clarification](docs/AMENDMENT_113.md).
 
 Headless verification: `tools/run.ps1 -Mode collections -TimeoutSeconds 300`; full regression: `-Mode test -TimeoutSeconds 1200`; fresh replay: `-Mode replay -Package res://artifacts/run_step113_A` (or another generated scenario).
+# 114 player inquiry follow-up
+
+Operational commands may opt into `strategic_prompt_follow_up_enabled`. After113 satisfies a requested assessment's information requirement, the player receives an additive qualitative answer based only on that acquired report. Historical111 answers remain unchanged; attention prompts receive no answer. See [contract](docs/PROMPT_FOLLOW_UP_114.md), [requirements](docs/REQUIREMENTS_114.md), and [approved event-order refinement](docs/AMENDMENT_114.md).
+
+Headless checks: `tools/run.ps1 -Mode followups -TimeoutSeconds 300`; fullsuite `-Mode test -TimeoutSeconds 1500`; fresh replay `-Mode replay -Package res://artifacts/run_step114_A` (substitute generated case names).

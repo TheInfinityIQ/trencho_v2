@@ -14,6 +14,7 @@ const RequirementConfig = preload("res://kernel/information_requirement_config.g
 const Collections = preload("res://kernel/information_collection_state.gd")
 const CollectionConfig = preload("res://kernel/information_collection_config.gd")
 const CollectionAudit = preload("res://kernel/information_collection_audit.gd")
+const FollowUpConfig = preload("res://kernel/prompt_follow_up_config.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -77,6 +78,8 @@ static func export_run(sim: RefCounted, directory: String) -> Dictionary:
 	manifest.player_prompts_enabled = true
 	manifest.player_prompt = {"schema_version": Prompts.SCHEMA, "file": "player_prompt_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_events.jsonl")), "projection_file": "final_player_prompts.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_player_prompts.json")), "inputs_sha256": FileAccess.get_sha256(directory.path_join("inputs.jsonl"))}
 	manifest.player_prompt.evaluation_config = {"schema_version": PromptConfig.SCHEMA, "file": "player_prompt_evaluation_config.json", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_evaluation_config.json"))}
+	if not write_json(directory.path_join("player_prompt_follow_up_config.json"), {"schema_version": FollowUpConfig.SCHEMA, "commands": sim.prompt_follow_up_configuration()}): return R.fail("EXPORT_FAILED", {"file": "player_prompt_follow_up_config.json"})
+	manifest.player_prompt.follow_up_config = {"schema_version": FollowUpConfig.SCHEMA, "file": "player_prompt_follow_up_config.json", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_follow_up_config.json"))}
 	for pair in [["information_requirement_events.jsonl", sim.information_requirements.events(), true], ["final_information_requirements.json", requirement_projection(sim), false], ["player_prompt_information_requirement_config.json", {"schema_version": RequirementConfig.SCHEMA, "commands": sim.information_requirement_configuration()}, false]]:
 		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
 	manifest.information_requirement = {"schema_version": Requirements.SCHEMA, "file": "information_requirement_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("information_requirement_events.jsonl")), "projection_file": "final_information_requirements.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_information_requirements.json")), "config_file": "player_prompt_information_requirement_config.json", "config_schema_version": RequirementConfig.SCHEMA, "config_sha256": FileAccess.get_sha256(directory.path_join("player_prompt_information_requirement_config.json"))}
@@ -126,9 +129,9 @@ static func read_lines(path: String) -> Dictionary:
 		result.append(parsed.details.value)
 	return R.ok(null, {"value": result})
 
-static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = []) -> Dictionary:
+static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = [], collection_configuration: Variant = [], follow_up_configuration: Variant = []) -> Dictionary:
 	var sim := Simulation.new()
-	var initialized := sim.initialize_snapshot(initial, strategic_areas, prompt_configuration, requirement_configuration, collection_configuration)
+	var initialized := sim.initialize_snapshot(initial, strategic_areas, prompt_configuration, requirement_configuration, collection_configuration, follow_up_configuration)
 	if not initialized.success:
 		return initialized
 	for record in recorded_inputs:
@@ -159,6 +162,11 @@ static func replay_package(directory: String) -> Dictionary:
 	if not manifest.get("player_observation_enabled") is bool: return R.fail("INVALID_OBSERVER_PACKAGE")
 	if manifest.get("player_prompts_enabled") != true or not manifest.get("player_prompt") is Dictionary: return R.fail("INVALID_PROMPT_PACKAGE")
 	var prompt_manifest: Dictionary = manifest.player_prompt
+	if not prompt_manifest.get("follow_up_config") is Dictionary or prompt_manifest.follow_up_config.get("schema_version") != FollowUpConfig.SCHEMA or prompt_manifest.follow_up_config.get("file") != "player_prompt_follow_up_config.json": return R.fail("INVALID_FOLLOW_UP_PACKAGE")
+	if prompt_manifest.follow_up_config.get("sha256") != FileAccess.get_sha256(directory.path_join("player_prompt_follow_up_config.json")): return R.fail("FOLLOW_UP_PACKAGE_HASH_MISMATCH")
+	var follow_up_configuration := read_json(directory.path_join("player_prompt_follow_up_config.json"))
+	if not follow_up_configuration.success: return follow_up_configuration
+	if follow_up_configuration.details.value.size() != 2 or follow_up_configuration.details.value.get("schema_version") != FollowUpConfig.SCHEMA or not follow_up_configuration.details.value.get("commands") is Array: return R.fail("INVALID_FOLLOW_UP_CONFIGURATION")
 	if not prompt_manifest.get("evaluation_config") is Dictionary or prompt_manifest.evaluation_config.get("schema_version") != PromptConfig.SCHEMA or prompt_manifest.evaluation_config.get("file") != "player_prompt_evaluation_config.json": return R.fail("INVALID_PROMPT_PACKAGE")
 	if prompt_manifest.evaluation_config.get("sha256") != FileAccess.get_sha256(directory.path_join("player_prompt_evaluation_config.json")): return R.fail("PROMPT_PACKAGE_HASH_MISMATCH")
 	var evaluation_configuration := read_json(directory.path_join("player_prompt_evaluation_config.json"))
@@ -206,13 +214,17 @@ static func replay_package(directory: String) -> Dictionary:
 		for pair in [["authoritative", "events.jsonl", Definition.SCHEMA_VERSION], ["player_observation", "player_observation_events.jsonl", "2C.1.player-observation.1"]]:
 			if not streams.get(pair[0]) is Dictionary or streams[pair[0]].get("file") != pair[1] or streams[pair[0]].get("schema_version") != pair[2] or streams[pair[0]].get("sha256") != FileAccess.get_sha256(directory.path_join(pair[1])): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
 		if manifest.get("observer_configuration_sha256") != FileAccess.get_sha256(directory.path_join("player_observer_config.json")) or manifest.get("observer_projection_sha256") != FileAccess.get_sha256(directory.path_join("final_player_observer.json")): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
-	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration, evaluation_configuration.details.value.commands, requirement_configuration.commands, collection_configuration.commands)
+	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration, evaluation_configuration.details.value.commands, requirement_configuration.commands, collection_configuration.commands, follow_up_configuration.details.value.commands)
 	if not replayed.success:
 		return replayed
 	var sim: RefCounted = replayed.details.simulation
 	if not observer_equivalent(sim.inputs, loaded["inputs.jsonl"]): return R.fail("PROMPT_INPUT_HISTORY_MISMATCH")
 	if not observer_equivalent(sim.player_prompts.events(), loaded["player_prompt_events.jsonl"]) or not observer_equivalent(prompt_projection(sim), loaded["final_player_prompts.json"]): return R.fail("PLAYER_PROMPT_REPLAY_MISMATCH")
-	var rebuilt := Prompts.new(sim.player_observer.configuration())
+	var rebuilt := Prompts.new(sim.player_observer.configuration(), sim.prompt_follow_up_configuration())
+	# Registry comes from independently regenerated113 acquisition, never from
+	# the follow-up event's own claimed qualitative values or source references.
+	for requirement in sim.information_requirements.snapshot().requirements:
+		if requirement.state == "SATISFIED" and not rebuilt.register_satisfaction(sim.follow_up_evidence(requirement)).success: return R.fail("INVALID_FOLLOW_UP_EVIDENCE")
 	for event in loaded["player_prompt_events.jsonl"]:
 		if not rebuilt.apply_event(event).success: return R.fail("INVALID_PROMPT_EVENT")
 	if not observer_equivalent(rebuilt.snapshot(), sim.player_prompts.snapshot()) or not observer_equivalent(rebuilt.view().snapshot(), sim.player_prompt_view().snapshot()): return R.fail("PLAYER_PROMPT_RECONSTRUCTION_MISMATCH")
@@ -245,6 +257,7 @@ static func replay_package(directory: String) -> Dictionary:
 	details.prompt_inputs_match = true
 	details.prompt_event_count = sim.player_prompts.events().size()
 	details.prompt_evaluation_count = sim.player_prompts.snapshot().evaluations.size()
+	details.prompt_follow_up_count = sim.player_prompts.snapshot().follow_ups.size()
 	details.requirement_events_match = true
 	details.requirement_projection_match = true
 	details.requirement_count = sim.information_requirements.snapshot().requirements.size()
