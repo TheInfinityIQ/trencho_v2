@@ -96,3 +96,7 @@ Project0.3.0/schema2C.1 adds configured StrategicAreas and a detached qualitativ
 ## 110 — Nonbinding player prompts
 
 Project0.3.1/schema2C.2. DIRECT_ATTENTION and REQUEST_ASSESSMENT target validated StrategicAreas and enabled Operational Commands. Prompts end at PENDING_EVALUATION; no AI policy consumes them. Independent prompt input/event identities leave the authoritative world and observer stream unchanged. Export includes strict integrity-checked prompt history and recipient views. See docs/PLAYER_PROMPTS_110.md, REQUIREMENTS_110.md and approved AMENDMENT_110.md. Run tools/run.ps1 -Mode prompts -TimeoutSeconds 180; full acceptance -Mode test -TimeoutSeconds 300. Headless startup safeguards remain. Stop at110 review; no111.
+
+## 111 — Operational prompt evaluation
+
+Project0.3.2/schema2C.3. Opt-in Operational Commands evaluate pending prompts once at whole-second boundaries using only delivered superior ammunition-need reports. Responses stay qualitative; military behavior and player observations remain unchanged. The evaluation flag is stripped into separate persisted configuration before canonical world projection. See docs/PROMPT_EVALUATION_111.md, REQUIREMENTS_111.md and approved AMENDMENT_111.md. Run tools/run.ps1 -Mode evaluations -TimeoutSeconds240; full acceptance -Mode test -TimeoutSeconds600. Stop at111 review; no112.

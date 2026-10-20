@@ -8,6 +8,7 @@ const Areas = preload("res://kernel/strategic_area_definition.gd")
 const Observer = preload("res://kernel/player_observer.gd")
 const World = preload("res://kernel/world_state.gd")
 const Prompts = preload("res://kernel/player_prompt_service.gd")
+const PromptConfig = preload("res://kernel/prompt_evaluation_config.gd")
 
 static func normalize(value: Variant) -> Variant:
 	if value is float and is_finite(value) and value == floor(value) and absf(value) < 9007199254740992.0:
@@ -66,10 +67,11 @@ static func export_run(sim: RefCounted, directory: String) -> Dictionary:
 		manifest.observer_configuration_sha256 = FileAccess.get_sha256(directory.path_join("player_observer_config.json"))
 		manifest.observer_projection_sha256 = FileAccess.get_sha256(directory.path_join("final_player_observer.json"))
 	# Empty intent streams are explicit too; no synthetic prompt is generated.
-	for pair in [["player_prompt_events.jsonl", sim.player_prompts.events(), true], ["final_player_prompts.json", prompt_projection(sim), false]]:
+	for pair in [["player_prompt_events.jsonl", sim.player_prompts.events(), true], ["final_player_prompts.json", prompt_projection(sim), false], ["player_prompt_evaluation_config.json", {"schema_version": PromptConfig.SCHEMA, "commands": sim.prompt_evaluation_configuration()}, false]]:
 		if not write_json(directory.path_join(pair[0]), pair[1], pair[2]): return R.fail("EXPORT_FAILED", {"file": pair[0]})
 	manifest.player_prompts_enabled = true
 	manifest.player_prompt = {"schema_version": Prompts.SCHEMA, "file": "player_prompt_events.jsonl", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_events.jsonl")), "projection_file": "final_player_prompts.json", "projection_sha256": FileAccess.get_sha256(directory.path_join("final_player_prompts.json")), "inputs_sha256": FileAccess.get_sha256(directory.path_join("inputs.jsonl"))}
+	manifest.player_prompt.evaluation_config = {"schema_version": PromptConfig.SCHEMA, "file": "player_prompt_evaluation_config.json", "sha256": FileAccess.get_sha256(directory.path_join("player_prompt_evaluation_config.json"))}
 	if not write_json(directory.path_join("manifest.json"), manifest): return R.fail("EXPORT_FAILED", {"file": "manifest.json"})
 	return R.ok(null, {"directory": directory})
 
@@ -107,9 +109,9 @@ static func read_lines(path: String) -> Dictionary:
 		result.append(parsed.details.value)
 	return R.ok(null, {"value": result})
 
-static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = []) -> Dictionary:
+static func replay(initial: Dictionary, recorded_inputs: Array, end_tick: int, strategic_areas: Variant = [], prompt_configuration: Variant = []) -> Dictionary:
 	var sim := Simulation.new()
-	var initialized := sim.initialize_snapshot(initial, strategic_areas)
+	var initialized := sim.initialize_snapshot(initial, strategic_areas, prompt_configuration)
 	if not initialized.success:
 		return initialized
 	for record in recorded_inputs:
@@ -140,6 +142,11 @@ static func replay_package(directory: String) -> Dictionary:
 	if not manifest.get("player_observation_enabled") is bool: return R.fail("INVALID_OBSERVER_PACKAGE")
 	if manifest.get("player_prompts_enabled") != true or not manifest.get("player_prompt") is Dictionary: return R.fail("INVALID_PROMPT_PACKAGE")
 	var prompt_manifest: Dictionary = manifest.player_prompt
+	if not prompt_manifest.get("evaluation_config") is Dictionary or prompt_manifest.evaluation_config.get("schema_version") != PromptConfig.SCHEMA or prompt_manifest.evaluation_config.get("file") != "player_prompt_evaluation_config.json": return R.fail("INVALID_PROMPT_PACKAGE")
+	if prompt_manifest.evaluation_config.get("sha256") != FileAccess.get_sha256(directory.path_join("player_prompt_evaluation_config.json")): return R.fail("PROMPT_PACKAGE_HASH_MISMATCH")
+	var evaluation_configuration := read_json(directory.path_join("player_prompt_evaluation_config.json"))
+	if not evaluation_configuration.success: return evaluation_configuration
+	if evaluation_configuration.details.value.size() != 2 or evaluation_configuration.details.value.get("schema_version") != PromptConfig.SCHEMA or not evaluation_configuration.details.value.get("commands") is Array: return R.fail("INVALID_PROMPT_EVALUATION_CONFIGURATION")
 	if prompt_manifest.get("schema_version") != Prompts.SCHEMA or prompt_manifest.get("file") != "player_prompt_events.jsonl" or prompt_manifest.get("projection_file") != "final_player_prompts.json": return R.fail("INVALID_PROMPT_PACKAGE")
 	for pair in [["player_prompt_events.jsonl", "sha256"], ["final_player_prompts.json", "projection_sha256"], ["inputs.jsonl", "inputs_sha256"]]:
 		if prompt_manifest.get(pair[1]) != FileAccess.get_sha256(directory.path_join(pair[0])): return R.fail("PROMPT_PACKAGE_HASH_MISMATCH")
@@ -164,13 +171,13 @@ static func replay_package(directory: String) -> Dictionary:
 		for pair in [["authoritative", "events.jsonl", Definition.SCHEMA_VERSION], ["player_observation", "player_observation_events.jsonl", "2C.1.player-observation.1"]]:
 			if not streams.get(pair[0]) is Dictionary or streams[pair[0]].get("file") != pair[1] or streams[pair[0]].get("schema_version") != pair[2] or streams[pair[0]].get("sha256") != FileAccess.get_sha256(directory.path_join(pair[1])): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
 		if manifest.get("observer_configuration_sha256") != FileAccess.get_sha256(directory.path_join("player_observer_config.json")) or manifest.get("observer_projection_sha256") != FileAccess.get_sha256(directory.path_join("final_player_observer.json")): return R.fail("OBSERVER_PACKAGE_HASH_MISMATCH")
-	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration)
+	var replayed := replay(loaded["initial_world.json"], loaded["inputs.jsonl"], manifest.end_tick, configuration, evaluation_configuration.details.value.commands)
 	if not replayed.success:
 		return replayed
 	var sim: RefCounted = replayed.details.simulation
 	if not observer_equivalent(sim.inputs, loaded["inputs.jsonl"]): return R.fail("PROMPT_INPUT_HISTORY_MISMATCH")
 	if not observer_equivalent(sim.player_prompts.events(), loaded["player_prompt_events.jsonl"]) or not observer_equivalent(prompt_projection(sim), loaded["final_player_prompts.json"]): return R.fail("PLAYER_PROMPT_REPLAY_MISMATCH")
-	var rebuilt := Prompts.new()
+	var rebuilt := Prompts.new(sim.player_observer.configuration())
 	for event in loaded["player_prompt_events.jsonl"]:
 		if not rebuilt.apply_event(event).success: return R.fail("INVALID_PROMPT_EVENT")
 	if not observer_equivalent(rebuilt.snapshot(), sim.player_prompts.snapshot()) or not observer_equivalent(rebuilt.view().snapshot(), sim.player_prompt_view().snapshot()): return R.fail("PLAYER_PROMPT_RECONSTRUCTION_MISMATCH")
@@ -188,6 +195,7 @@ static func replay_package(directory: String) -> Dictionary:
 	details.prompt_projection_match = true
 	details.prompt_inputs_match = true
 	details.prompt_event_count = sim.player_prompts.events().size()
+	details.prompt_evaluation_count = sim.player_prompts.snapshot().evaluations.size()
 	if manifest.player_observation_enabled:
 		var observed := {"state": sim.player_observer.snapshot(), "view": sim.player_view().snapshot()}
 		if not observer_equivalent(sim.player_observer.events(), loaded["player_observation_events.jsonl"]) or not observer_equivalent(observed, loaded["final_player_observer.json"]): return R.fail("PLAYER_OBSERVATION_REPLAY_MISMATCH")

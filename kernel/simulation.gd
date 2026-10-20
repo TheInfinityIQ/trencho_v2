@@ -21,6 +21,8 @@ const Areas = preload("res://kernel/strategic_area_definition.gd")
 const Observer = preload("res://kernel/player_observer.gd")
 const Prompts = preload("res://kernel/player_prompt_service.gd")
 const PromptView = preload("res://kernel/player_prompt_view.gd")
+const PromptConfig = preload("res://kernel/prompt_evaluation_config.gd")
+const PromptPolicy = preload("res://kernel/prompt_evaluation_policy.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -33,24 +35,30 @@ var _rng := RandomNumberGenerator.new()
 var player_observer := Observer.new()
 var player_prompts := Prompts.new()
 var _prompt_input_sequence := 0
+var _prompt_evaluation_config: Array = []
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
 	if version.major != 4 or version.minor != 7 or version.patch != 2 or version.status != "stable":
 		return R.fail("ENGINE_VERSION_MISMATCH")
-	var loaded: Dictionary = Definition.load_definition(definition, seed, run_id)
+	var extracted := PromptConfig.extract(definition)
+	if not extracted.success: return extracted
+	var loaded: Dictionary = Definition.load_definition(extracted.details.definition, seed, run_id)
 	if not loaded.success:
 		return loaded
-	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []))
+	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration)
 
-func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = []) -> Dictionary:
+func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = []) -> Dictionary:
 	var validation: Dictionary = Definition.validate_initial_snapshot(snapshot)
 	if not validation.success:
 		return validation
 	var configured := Areas.normalize(strategic_areas, snapshot.locations, snapshot.fronts, {})
 	if not configured.success: return configured
+	var prompt_configured := PromptConfig.normalize(prompt_configuration, snapshot.commands, snapshot.clock.tick_duration)
+	if not prompt_configured.success: return prompt_configured
+	_prompt_evaluation_config = prompt_configured.details.configuration
 	player_observer = Observer.new(configured.details.areas)
-	player_prompts = Prompts.new()
+	player_prompts = Prompts.new(configured.details.areas)
 	_prompt_input_sequence = 0
 	initial_world = snapshot.duplicate(true)
 	# Restore the new fixed-point front fields to integer types after JSON parsing.
@@ -140,6 +148,17 @@ func command_prompt_view(command_id: String) -> RefCounted:
 	var command: Dictionary = world.get_command(command_id)
 	if command.is_empty() or command.command_level != "OPERATIONAL": return PromptView.new()
 	return player_prompts.view(command_id)
+
+func prompt_evaluation_configuration() -> Array:
+	return _prompt_evaluation_config.duplicate(true)
+
+func _evaluate_player_prompts() -> void:
+	if Clock.units(time()) % 1000000 != 0: return
+	for entry in _prompt_evaluation_config:
+		if not entry.enabled: continue
+		var view: RefCounted = command_view(entry.operational_command_id)
+		# Pass only detached identity and whitelisted delivered report provenance.
+		player_prompts.evaluate_pending(view.identity(), PromptPolicy.knowledge(view.superior_need_reports()), time())
 
 func _submit_player_prompt(input: Dictionary, is_privileged: bool) -> Dictionary:
 	# Separate intent input sequence: legacy world IDs/context remain untouched.
@@ -285,6 +304,8 @@ func advance(ticks: int = 1) -> Dictionary:
 		if superior_enabled:
 			# Drain newly sent zero-latency material updates before this boundary's AI.
 			Resolution.new(self).step(tick_event)
+		_evaluate_player_prompts()
+		if superior_enabled:
 			Arbitration.new(self).step(tick_event)
 			# Zero-latency orders are received after arbitration, before the next tick.
 			Resolution.new(self).step(tick_event)

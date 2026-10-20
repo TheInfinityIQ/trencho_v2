@@ -9,11 +9,15 @@ func _init(records: Array = [], history: Array = [], recipient: Variant = null) 
 		if recipient != null and record.recipient_command_id != recipient: continue
 		var safe: Dictionary = {}
 		for key in FIELDS: safe[key] = record[key]
+		for key in ["result", "assessment_code", "evaluated_at"]:
+			if record.has(key): safe[key] = record[key]
 		_prompts.append(safe)
 	for event in history:
 		if recipient != null and event.recipient_command_id != recipient: continue
 		var safe: Dictionary = {}
 		for key in ["prompt_id", "prompt_type", "area_id", "recipient_command_id", "at", "event_type"]: safe[key] = event[key]
+		if event.event_type == "PLAYER_PROMPT_EVALUATED":
+			for key in ["result", "assessment_code", "evaluated_at"]: safe[key] = event[key]
 		_history.append(safe)
 
 func current() -> Array:
