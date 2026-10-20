@@ -4,15 +4,15 @@ const Clock = preload("res://kernel/clock.gd")
 const FIELD = "strategic_prompt_evaluation_enabled"
 const SCHEMA = "2C.3.prompt-evaluation-config.1"
 
-static func extract(definition: Dictionary) -> Dictionary:
+static func extract(definition: Dictionary, field := FIELD) -> Dictionary:
 	if not R.json_compatible(definition) or not definition.get("commands", []) is Array: return R.fail("INVALID_WORLD_DEFINITION")
 	var canonical := definition.duplicate(true)
 	var configuration: Array = []
 	for command in canonical.get("commands", []):
 		if not command is Dictionary: return R.fail("INVALID_WORLD_DEFINITION")
-		if command.has(FIELD):
-			configuration.append({"operational_command_id": command.get("id"), "enabled": command[FIELD]})
-			command.erase(FIELD)
+		if command.has(field):
+			configuration.append({"operational_command_id": command.get("id"), "enabled": command[field]})
+			command.erase(field)
 	return R.ok(null, {"definition": canonical, "configuration": configuration})
 
 static func normalize(configuration: Variant, commands: Dictionary, tick_duration: float) -> Dictionary:

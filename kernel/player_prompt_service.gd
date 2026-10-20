@@ -1,4 +1,5 @@
 extends RefCounted
+signal evaluation_completed(source: Dictionary)
 # Advisory intent is authoritative input history in its own namespace. This
 # service reads scope at submission; it never writes world or information data.
 const R = preload("res://kernel/result.gd")
@@ -123,6 +124,11 @@ func evaluate_pending(identity: Dictionary, reports: Array, at: float) -> void:
 		event.merge(result)
 		var applied := apply_event(event)
 		assert(applied.success)
+		var source: Dictionary = {}
+		for key in ["evaluation_id", "prompt_id", "recipient_command_id", "area_id", "prompt_type", "evaluated_at", "result", "assessment_code"]: source[key] = event[key]
+		source.evaluated_event_id = event.prompt_event_id
+		source.state = "COMPLETED"
+		evaluation_completed.emit(source)
 
 func submit(input: Dictionary, input_id: String, at: float) -> Dictionary:
 	var id := "player-prompt:%010d" % (_prompts.size() + 1)

@@ -23,6 +23,8 @@ const Prompts = preload("res://kernel/player_prompt_service.gd")
 const PromptView = preload("res://kernel/player_prompt_view.gd")
 const PromptConfig = preload("res://kernel/prompt_evaluation_config.gd")
 const PromptPolicy = preload("res://kernel/prompt_evaluation_policy.gd")
+const RequirementConfig = preload("res://kernel/information_requirement_config.gd")
+const Requirements = preload("res://kernel/information_requirement_service.gd")
 
 var world: RefCounted
 var events := Store.new()
@@ -36,6 +38,8 @@ var player_observer := Observer.new()
 var player_prompts := Prompts.new()
 var _prompt_input_sequence := 0
 var _prompt_evaluation_config: Array = []
+var _information_requirement_config: Array = []
+var information_requirements := Requirements.new()
 
 func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictionary:
 	var version := Engine.get_version_info()
@@ -43,12 +47,14 @@ func initialize(definition: Dictionary, seed := 101, run_id := "demo") -> Dictio
 		return R.fail("ENGINE_VERSION_MISMATCH")
 	var extracted := PromptConfig.extract(definition)
 	if not extracted.success: return extracted
-	var loaded: Dictionary = Definition.load_definition(extracted.details.definition, seed, run_id)
+	var requirements_extracted := RequirementConfig.extract(extracted.details.definition)
+	if not requirements_extracted.success: return requirements_extracted
+	var loaded: Dictionary = Definition.load_definition(requirements_extracted.details.definition, seed, run_id)
 	if not loaded.success:
 		return loaded
-	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration)
+	return initialize_snapshot(loaded.details.snapshot, definition.get("strategic_areas", []), extracted.details.configuration, requirements_extracted.details.configuration)
 
-func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = []) -> Dictionary:
+func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], prompt_configuration: Variant = [], requirement_configuration: Variant = []) -> Dictionary:
 	var validation: Dictionary = Definition.validate_initial_snapshot(snapshot)
 	if not validation.success:
 		return validation
@@ -56,9 +62,16 @@ func initialize_snapshot(snapshot: Dictionary, strategic_areas: Variant = [], pr
 	if not configured.success: return configured
 	var prompt_configured := PromptConfig.normalize(prompt_configuration, snapshot.commands, snapshot.clock.tick_duration)
 	if not prompt_configured.success: return prompt_configured
+	var requirements_configured := RequirementConfig.normalize(requirement_configuration, snapshot.commands)
+	if not requirements_configured.success: return requirements_configured
 	_prompt_evaluation_config = prompt_configured.details.configuration
+	_information_requirement_config = requirements_configured.details.configuration
 	player_observer = Observer.new(configured.details.areas)
 	player_prompts = Prompts.new(configured.details.areas)
+	var owners: Array = snapshot.commands.keys().filter(func(id): return snapshot.commands[id].command_level == "OPERATIONAL")
+	owners.sort()
+	information_requirements = Requirements.new(configured.details.areas, owners, _information_requirement_config)
+	player_prompts.evaluation_completed.connect(information_requirements.on_evaluation)
 	_prompt_input_sequence = 0
 	initial_world = snapshot.duplicate(true)
 	# Restore the new fixed-point front fields to integer types after JSON parsing.
@@ -151,6 +164,12 @@ func command_prompt_view(command_id: String) -> RefCounted:
 
 func prompt_evaluation_configuration() -> Array:
 	return _prompt_evaluation_config.duplicate(true)
+
+func information_requirement_configuration() -> Array:
+	return _information_requirement_config.duplicate(true)
+
+func information_requirement_view(command_id: String) -> RefCounted:
+	return information_requirements.view(command_id)
 
 func _evaluate_player_prompts() -> void:
 	if Clock.units(time()) % 1000000 != 0: return

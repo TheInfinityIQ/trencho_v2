@@ -100,3 +100,7 @@ Project0.3.1/schema2C.2. DIRECT_ATTENTION and REQUEST_ASSESSMENT target validate
 ## 111 — Operational prompt evaluation
 
 Project0.3.2/schema2C.3. Opt-in Operational Commands evaluate pending prompts once at whole-second boundaries using only delivered superior ammunition-need reports. Responses stay qualitative; military behavior and player observations remain unchanged. The evaluation flag is stripped into separate persisted configuration before canonical world projection. See docs/PROMPT_EVALUATION_111.md, REQUIREMENTS_111.md and approved AMENDMENT_111.md. Run tools/run.ps1 -Mode evaluations -TimeoutSeconds240; full acceptance -Mode test -TimeoutSeconds600. Stop at111 review; no112.
+
+## 112 — Command-generated information requirements
+
+Project0.3.3/schema2C.4. An explicitly enabled Operational Command turns unsupported111 attention/assessment evaluations into one OPEN AREA_SITUATION_ASSESSMENT work item per owner/area/type. Repeated gaps link ordered provenance; no facts, fulfillment, missions or military action follow. Independent config/stream/projection preserve prior world, observer and prompt/evaluation behavior. See docs/INFORMATION_REQUIREMENTS_112.md and REQUIREMENTS_112.md. Run tools/run.ps1 -Mode requirements -TimeoutSeconds240; fullsuite -Mode test -TimeoutSeconds900. Stop at112 review; no113.

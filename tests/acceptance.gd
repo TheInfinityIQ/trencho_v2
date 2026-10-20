@@ -17,6 +17,7 @@ const IntegratedCases = preload("res://tests/integrated_cases.gd")
 const PlayerCases = preload("res://tests/player_observation_cases.gd")
 const PromptCases = preload("res://tests/player_prompt_cases.gd")
 const EvaluationCases = preload("res://tests/prompt_evaluation_cases.gd")
+const RequirementCases = preload("res://tests/information_requirement_cases.gd")
 var checks: Array = []
 var failures: Array = []
 
@@ -111,6 +112,10 @@ func _initialize() -> void:
 	var evaluation: Dictionary = EvaluationCases.run()
 	Exporter.write_json("res://artifacts/step111_results.json", evaluation)
 	for item in evaluation.checks:
+		check(item.passed, item.name)
+	var requirement: Dictionary = RequirementCases.run()
+	Exporter.write_json("res://artifacts/step112_results.json", requirement)
+	for item in requirement.checks:
 		check(item.passed, item.name)
 	var report := {"schema_version": Definition.SCHEMA_VERSION, "project_version": Definition.PROJECT_VERSION, "engine_version": Engine.get_version_info().string, "checks": checks.size(), "passed": checks.size() - failures.size(), "failed": failures.size(), "failures": failures, "results": checks}
 	Exporter.write_json("res://artifacts/acceptance_results.json", report)
